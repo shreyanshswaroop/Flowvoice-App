@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+websockets
+deepgram-sdk
+pymongo[srv]
+python-jose[cryptography]
+pwdlib[argon2]
+email-validator
+openai
