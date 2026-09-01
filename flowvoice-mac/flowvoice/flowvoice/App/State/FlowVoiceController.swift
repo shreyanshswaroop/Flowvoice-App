@@ -722,11 +722,15 @@ final class FlowVoiceController: ObservableObject {
                     finalText
                 )
 
-            displayTranscript =
-                finalText
-
+            // IMPORTANT:
+            // Set inserted state BEFORE publishing the final transcript.
+            // ContentView uses this state to decide whether the transcript
+            // should be stored in history.
             state =
                 .inserted
+
+            displayTranscript =
+                finalText
 
             isProcessingInsertion =
                 false

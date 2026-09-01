@@ -37,6 +37,10 @@ final class FloatingVoiceWindowController {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false
+        panel.appearance =
+            NSAppearance(
+                named: .darkAqua
+            )
 
         panel.hidesOnDeactivate = false
 
@@ -62,6 +66,7 @@ final class FloatingVoiceWindowController {
                     FloatingVoiceView(
                         controller: controller
                     )
+                    .preferredColorScheme(.dark)
             )
 
         hostingView.frame = NSRect(

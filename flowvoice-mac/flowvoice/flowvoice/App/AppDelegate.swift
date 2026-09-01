@@ -17,6 +17,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ notification: Notification
     ) {
 
+        NSApplication.shared.appearance =
+            NSAppearance(
+                named: .darkAqua
+            )
+
         AccessibilityPermissionService
             .shared
             .requestPermission()

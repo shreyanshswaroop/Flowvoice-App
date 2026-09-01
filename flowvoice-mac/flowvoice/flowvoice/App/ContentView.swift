@@ -481,13 +481,6 @@ struct ContentView: View {
             return
         }
 
-        guard
-            cleaned !=
-                lastStoredTranscript
-        else {
-            return
-        }
-
         lastStoredTranscript =
             cleaned
 

@@ -29,6 +29,10 @@ struct RootView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .environment(
+            \.colorScheme,
+            .dark
+        )
         .background(
             FlowVoiceTheme.pageBackground
         )

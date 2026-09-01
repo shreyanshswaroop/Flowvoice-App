@@ -16,63 +16,43 @@ final class MeetingAudioCaptureService:
 
     private let captureQueue =
         DispatchQueue(
-            label:
-                "flowvoice.meeting.capture"
+            label: "flowvoice.meeting.capture"
         )
 
     private let processingQueue =
         DispatchQueue(
-            label:
-                "flowvoice.meeting.processing"
+            label: "flowvoice.meeting.processing"
         )
 
-    private var isRunning =
-        false
+    private var isRunning = false
 
-    private let targetSampleRate:
-        Double = 16_000
+    private let targetSampleRate: Double = 16_000
+    private let targetChannels: AVAudioChannelCount = 1
 
-    private let targetChannels:
-        AVAudioChannelCount = 1
-
-    private var systemConverter:
-        AVAudioConverter?
-
-    private var microphoneConverter:
-        AVAudioConverter?
+    private var systemConverter: AVAudioConverter?
+    private var microphoneConverter: AVAudioConverter?
 
     // Buffers used to combine
     // microphone + meeting audio.
-    private var pendingSystemSamples:
-        [Int16] = []
+    private var pendingSystemSamples: [Int16] = []
+    private var pendingMicrophoneSamples: [Int16] = []
 
-    private var pendingMicrophoneSamples:
-        [Int16] = []
-
-    private let mixChunkSize =
-        1600
+    private let mixChunkSize = 1600
 
     // MARK: - Permissions
 
-    func requestMicrophonePermission()
-        async -> Bool {
-
-        await withCheckedContinuation {
-            continuation in
-
-            AVCaptureDevice
-                .requestAccess(
-                    for: .audio
-                ) {
-                    granted in
-
-                    continuation.resume(
-                        returning:
-                            granted
-                    )
-                }
+    func requestMicrophonePermission() async -> Bool {
+        await withCheckedContinuation { continuation in
+            AVCaptureDevice.requestAccess(
+                for: .audio
+            ) { granted in
+                continuation.resume(
+                    returning: granted
+                )
+            }
         }
     }
+    
 
     // MARK: - Start
 
@@ -86,7 +66,6 @@ final class MeetingAudioCaptureService:
             await requestMicrophonePermission()
 
         guard microphoneGranted else {
-
             throw MeetingAudioCaptureError
                 .microphonePermissionDenied
         }
@@ -95,52 +74,43 @@ final class MeetingAudioCaptureService:
             try await SCShareableContent
                 .excludingDesktopWindows(
                     false,
-                    onScreenWindowsOnly:
-                        true
+                    onScreenWindowsOnly: true
                 )
 
         guard let display =
             content.displays.first
         else {
-
             throw MeetingAudioCaptureError
                 .noDisplay
         }
 
         let filter =
             SCContentFilter(
-                display:
-                    display,
-                excludingWindows:
-                    []
+                display: display,
+                excludingWindows: []
             )
 
         let configuration =
             SCStreamConfiguration()
 
-        // System / meeting audio
-        configuration.capturesAudio =
-            true
+        // MARK: System / meeting audio
 
-        configuration.excludesCurrentProcessAudio =
-            true
+        configuration.capturesAudio = true
+
+        configuration.excludesCurrentProcessAudio = true
 
         // Ask ScreenCaptureKit for exactly
         // the format Deepgram already expects.
+
         configuration.sampleRate =
-            Int(
-                targetSampleRate
-            )
+            Int(targetSampleRate)
 
         configuration.channelCount =
-            Int(
-                targetChannels
-            )
+            Int(targetChannels)
 
-        // Microphone capture is available
-        // on macOS 15+.
-        configuration.captureMicrophone =
-            true
+        // MARK: Microphone
+
+        configuration.captureMicrophone = true
 
         if let microphone =
             AVCaptureDevice.default(
@@ -152,14 +122,16 @@ final class MeetingAudioCaptureService:
                 microphone.uniqueID
         }
 
-        // We don't need video frames.
-        // These values just keep the stream
-        // lightweight.
-        configuration.width =
-            2
+        // MARK: Lightweight screen output
 
-        configuration.height =
-            2
+        // SCStream is still display-backed, so
+        // ScreenCaptureKit may produce video frames.
+        //
+        // We do not use video in FlowVoice.
+        // Keeping this tiny minimizes overhead.
+
+        configuration.width = 2
+        configuration.height = 2
 
         configuration.minimumFrameInterval =
             CMTime(
@@ -167,46 +139,52 @@ final class MeetingAudioCaptureService:
                 timescale: 1
             )
 
-        configuration.queueDepth =
-            3
+        configuration.queueDepth = 3
 
         let stream =
             SCStream(
-                filter:
-                    filter,
-                configuration:
-                    configuration,
-                delegate:
-                    self
+                filter: filter,
+                configuration: configuration,
+                delegate: self
             )
+
+        // MARK: System audio output
 
         try stream.addStreamOutput(
             self,
             type: .audio,
-            sampleHandlerQueue:
-                captureQueue
+            sampleHandlerQueue: captureQueue
         )
+
+        // MARK: Microphone output
 
         try stream.addStreamOutput(
             self,
             type: .microphone,
-            sampleHandlerQueue:
-                captureQueue
+            sampleHandlerQueue: captureQueue
         )
 
-        self.stream =
-            stream
+        // MARK: Screen output
 
-        pendingSystemSamples =
-            []
+        // We intentionally ignore these frames.
+        // Registering this output prevents
+        // ScreenCaptureKit from repeatedly logging
+        // "stream output NOT found. Dropping frame".
 
-        pendingMicrophoneSamples =
-            []
+        try stream.addStreamOutput(
+            self,
+            type: .screen,
+            sampleHandlerQueue: captureQueue
+        )
+
+        self.stream = stream
+
+        pendingSystemSamples = []
+        pendingMicrophoneSamples = []
 
         try await stream.startCapture()
 
-        isRunning =
-            true
+        isRunning = true
 
         print(
             "Meeting audio capture started"
@@ -221,8 +199,7 @@ final class MeetingAudioCaptureService:
             return
         }
 
-        isRunning =
-            false
+        isRunning = false
 
         if let stream {
 
@@ -240,20 +217,13 @@ final class MeetingAudioCaptureService:
             }
         }
 
-        stream =
-            nil
+        stream = nil
 
-        systemConverter =
-            nil
+        systemConverter = nil
+        microphoneConverter = nil
 
-        microphoneConverter =
-            nil
-
-        pendingSystemSamples =
-            []
-
-        pendingMicrophoneSamples =
-            []
+        pendingSystemSamples = []
+        pendingMicrophoneSamples = []
 
         onAudioLevel?(0)
 
@@ -266,10 +236,8 @@ final class MeetingAudioCaptureService:
 
     func stream(
         _ stream: SCStream,
-        didOutputSampleBuffer sampleBuffer:
-            CMSampleBuffer,
-        of outputType:
-            SCStreamOutputType
+        didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+        of outputType: SCStreamOutputType
     ) {
 
         guard
@@ -287,17 +255,29 @@ final class MeetingAudioCaptureService:
 
             processSampleBuffer(
                 sampleBuffer,
-                source:
-                    .system
+                source: .system
             )
 
         case .microphone:
 
             processSampleBuffer(
                 sampleBuffer,
-                source:
-                    .microphone
+                source: .microphone
             )
+
+        case .screen:
+
+            // Intentionally ignored.
+            //
+            // FlowVoice only needs:
+            // - system audio
+            // - microphone audio
+            //
+            // We register the screen output only
+            // so ScreenCaptureKit has somewhere
+            // to deliver display frames.
+
+            break
 
         default:
 
@@ -317,8 +297,7 @@ final class MeetingAudioCaptureService:
             error
         )
 
-        isRunning =
-            false
+        isRunning = false
     }
 
     // MARK: - Source
@@ -331,10 +310,8 @@ final class MeetingAudioCaptureService:
     // MARK: - Process Sample
 
     private func processSampleBuffer(
-        _ sampleBuffer:
-            CMSampleBuffer,
-        source:
-            AudioSource
+        _ sampleBuffer: CMSampleBuffer,
+        source: AudioSource
     ) {
 
         guard let formatDescription =
@@ -355,8 +332,7 @@ final class MeetingAudioCaptureService:
 
         let inputFormat =
             AVAudioFormat(
-                streamDescription:
-                    asbd
+                streamDescription: asbd
             )
 
         guard let inputFormat else {
@@ -374,8 +350,7 @@ final class MeetingAudioCaptureService:
 
         guard let pcmBuffer =
             AVAudioPCMBuffer(
-                pcmFormat:
-                    inputFormat,
+                pcmFormat: inputFormat,
                 frameCapacity:
                     AVAudioFrameCount(
                         frameCount
@@ -414,60 +389,49 @@ final class MeetingAudioCaptureService:
         }
 
         calculateAudioLevel(
-            from:
-                pcmBuffer
+            from: pcmBuffer
         )
 
         convert(
-            buffer:
-                pcmBuffer,
-            source:
-                source
+            buffer: pcmBuffer,
+            source: source
         )
     }
 
     // MARK: - Convert to 16k Int16 Mono
 
     private func convert(
-        buffer:
-            AVAudioPCMBuffer,
-        source:
-            AudioSource
+        buffer: AVAudioPCMBuffer,
+        source: AudioSource
     ) {
 
         guard let outputFormat =
             AVAudioFormat(
-                commonFormat:
-                    .pcmFormatInt16,
-                sampleRate:
-                    targetSampleRate,
-                channels:
-                    targetChannels,
-                interleaved:
-                    true
+                commonFormat: .pcmFormatInt16,
+                sampleRate: targetSampleRate,
+                channels: targetChannels,
+                interleaved: true
             )
         else {
             return
         }
 
-        let converter:
-            AVAudioConverter?
+        let converter: AVAudioConverter?
 
         switch source {
 
         case .system:
 
-            if systemConverter == nil
+            if
+                systemConverter == nil
                 || systemConverter?
-                    .inputFormat
-                != buffer.format {
+                    .inputFormat != buffer.format
+            {
 
                 systemConverter =
                     AVAudioConverter(
-                        from:
-                            buffer.format,
-                        to:
-                            outputFormat
+                        from: buffer.format,
+                        to: outputFormat
                     )
             }
 
@@ -476,17 +440,16 @@ final class MeetingAudioCaptureService:
 
         case .microphone:
 
-            if microphoneConverter == nil
+            if
+                microphoneConverter == nil
                 || microphoneConverter?
-                    .inputFormat
-                != buffer.format {
+                    .inputFormat != buffer.format
+            {
 
                 microphoneConverter =
                     AVAudioConverter(
-                        from:
-                            buffer.format,
-                        to:
-                            outputFormat
+                        from: buffer.format,
+                        to: outputFormat
                     )
             }
 
@@ -514,20 +477,16 @@ final class MeetingAudioCaptureService:
 
         guard let convertedBuffer =
             AVAudioPCMBuffer(
-                pcmFormat:
-                    outputFormat,
-                frameCapacity:
-                    outputCapacity
+                pcmFormat: outputFormat,
+                frameCapacity: outputCapacity
             )
         else {
             return
         }
 
-        var conversionError:
-            NSError?
+        var conversionError: NSError?
 
-        var supplied =
-            false
+        var supplied = false
 
         let inputBlock:
             AVAudioConverterInputBlock = {
@@ -542,8 +501,7 @@ final class MeetingAudioCaptureService:
                     return nil
                 }
 
-                supplied =
-                    true
+                supplied = true
 
                 status.pointee =
                     .haveData
@@ -552,12 +510,9 @@ final class MeetingAudioCaptureService:
             }
 
         converter.convert(
-            to:
-                convertedBuffer,
-            error:
-                &conversionError,
-            withInputFrom:
-                inputBlock
+            to: convertedBuffer,
+            error: &conversionError,
+            withInputFrom: inputBlock
         )
 
         if let conversionError {
@@ -588,10 +543,8 @@ final class MeetingAudioCaptureService:
         let samples =
             Array(
                 UnsafeBufferPointer(
-                    start:
-                        pointer,
-                    count:
-                        sampleCount
+                    start: pointer,
+                    count: sampleCount
                 )
             )
 
@@ -600,8 +553,7 @@ final class MeetingAudioCaptureService:
 
             self?.queueSamples(
                 samples,
-                source:
-                    source
+                source: source
             )
         }
     }
@@ -609,10 +561,8 @@ final class MeetingAudioCaptureService:
     // MARK: - Queue Samples
 
     private func queueSamples(
-        _ samples:
-            [Int16],
-        source:
-            AudioSource
+        _ samples: [Int16],
+        source: AudioSource
     ) {
 
         switch source {
@@ -621,16 +571,14 @@ final class MeetingAudioCaptureService:
 
             pendingSystemSamples
                 .append(
-                    contentsOf:
-                        samples
+                    contentsOf: samples
                 )
 
         case .microphone:
 
             pendingMicrophoneSamples
                 .append(
-                    contentsOf:
-                        samples
+                    contentsOf: samples
                 )
         }
 
@@ -642,28 +590,23 @@ final class MeetingAudioCaptureService:
     private func mixAvailableSamples() {
 
         while
-            pendingSystemSamples.count
-                >= mixChunkSize
+            pendingSystemSamples.count >= mixChunkSize
             ||
-            pendingMicrophoneSamples.count
-                >= mixChunkSize {
+            pendingMicrophoneSamples.count >= mixChunkSize
+        {
 
             var mixed =
                 [Int16](
                     repeating: 0,
-                    count:
-                        mixChunkSize
+                    count: mixChunkSize
                 )
 
-            for index in
-                0..<mixChunkSize {
+            for index in 0..<mixChunkSize {
 
-                let systemSample:
-                    Int32
+                let systemSample: Int32
 
                 if index <
-                    pendingSystemSamples
-                        .count {
+                    pendingSystemSamples.count {
 
                     systemSample =
                         Int32(
@@ -674,16 +617,13 @@ final class MeetingAudioCaptureService:
 
                 } else {
 
-                    systemSample =
-                        0
+                    systemSample = 0
                 }
 
-                let microphoneSample:
-                    Int32
+                let microphoneSample: Int32
 
                 if index <
-                    pendingMicrophoneSamples
-                        .count {
+                    pendingMicrophoneSamples.count {
 
                     microphoneSample =
                         Int32(
@@ -694,15 +634,14 @@ final class MeetingAudioCaptureService:
 
                 } else {
 
-                    microphoneSample =
-                        0
+                    microphoneSample = 0
                 }
 
                 // Mix both sources.
                 //
                 // Dividing by 2 prevents
-                // easy clipping when both
-                // are loud at once.
+                // clipping when both are loud.
+
                 let value =
                     (
                         systemSample
@@ -742,8 +681,7 @@ final class MeetingAudioCaptureService:
 
                 pendingSystemSamples
                     .removeAll(
-                        keepingCapacity:
-                            true
+                        keepingCapacity: true
                     )
             }
 
@@ -759,8 +697,7 @@ final class MeetingAudioCaptureService:
 
                 pendingMicrophoneSamples
                     .removeAll(
-                        keepingCapacity:
-                            true
+                        keepingCapacity: true
                     )
             }
 
@@ -787,8 +724,7 @@ final class MeetingAudioCaptureService:
     // MARK: - Level
 
     private func calculateAudioLevel(
-        from buffer:
-            AVAudioPCMBuffer
+        from buffer: AVAudioPCMBuffer
     ) {
 
         guard let channelData =
@@ -807,11 +743,9 @@ final class MeetingAudioCaptureService:
             return
         }
 
-        var sum:
-            Float = 0
+        var sum: Float = 0
 
-        for index in
-            0..<frameLength {
+        for index in 0..<frameLength {
 
             let sample =
                 channelData[
@@ -831,8 +765,7 @@ final class MeetingAudioCaptureService:
                 )
             )
 
-        let minDB:
-            Float = -60
+        let minDB: Float = -60
 
         let safeRMS =
             max(
@@ -843,9 +776,9 @@ final class MeetingAudioCaptureService:
         let db =
             max(
                 20
-                * log10(
-                    safeRMS
-                ),
+                    * log10(
+                        safeRMS
+                    ),
                 minDB
             )
 
@@ -878,7 +811,6 @@ final class MeetingAudioCaptureService:
         }
     }
 }
-
 
 enum MeetingAudioCaptureError:
     Error {

@@ -33,6 +33,10 @@ struct flowvoiceApp: App {
                     authManager
                 )
                 .preferredColorScheme(.dark)
+                .environment(
+                    \.colorScheme,
+                    .dark
+                )
                 .background(
                     FlowVoiceTheme.pageBackground
                 )

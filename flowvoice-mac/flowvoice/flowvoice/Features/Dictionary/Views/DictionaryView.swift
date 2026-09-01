@@ -61,11 +61,18 @@ struct DictionaryView: View {
     @State private var editingEntry:
         DictionaryEntry?
 
-    private let pageBackground =
+    private let termAccent =
         Color(
-            red: 0.972,
-            green: 0.962,
-            blue: 0.940
+            red: 0.620,
+            green: 0.520,
+            blue: 1.000
+        )
+
+    private let replacementAccent =
+        Color(
+            red: 1.000,
+            green: 0.580,
+            blue: 0.320
         )
 
     var body: some View {
@@ -111,7 +118,10 @@ struct DictionaryView: View {
             .hidden
         )
         .background(
-            pageBackground
+            FlowVoiceTheme.pageBackground
+        )
+        .preferredColorScheme(
+            .dark
         )
         .task {
 
@@ -157,9 +167,7 @@ struct DictionaryView: View {
                         .weight(.semibold)
                     )
                     .foregroundStyle(
-                        Color.black.opacity(
-                            0.9
-                        )
+                        FlowVoiceTheme.primaryText
                     )
 
                 Text(
@@ -172,9 +180,7 @@ struct DictionaryView: View {
                     )
                 )
                 .foregroundStyle(
-                    Color.black.opacity(
-                        0.5
-                    )
+                    FlowVoiceTheme.secondaryText
                 )
             }
 
@@ -211,7 +217,7 @@ struct DictionaryView: View {
                     .weight(.semibold)
                 )
                 .foregroundStyle(
-                    .white
+                    FlowVoiceTheme.accentButtonText
                 )
                 .padding(
                     .horizontal,
@@ -221,7 +227,7 @@ struct DictionaryView: View {
                     height: 38
                 )
                 .background(
-                    Color.black,
+                    FlowVoiceTheme.accentButton,
                     in:
                         RoundedRectangle(
                             cornerRadius: 10,
@@ -256,9 +262,7 @@ struct DictionaryView: View {
                 )
             )
             .foregroundStyle(
-                Color.purple.opacity(
-                    0.72
-                )
+                termAccent.opacity(0.86)
             )
             .frame(
                 width: 46,
@@ -271,9 +275,7 @@ struct DictionaryView: View {
                         .continuous
                 )
                 .fill(
-                    Color.purple.opacity(
-                        0.07
-                    )
+                    termAccent.opacity(0.16)
                 )
             )
 
@@ -293,9 +295,7 @@ struct DictionaryView: View {
                     .weight(.semibold)
                 )
                 .foregroundStyle(
-                    Color.black.opacity(
-                        0.78
-                    )
+                    FlowVoiceTheme.primaryText
                 )
 
                 Text(
@@ -308,9 +308,7 @@ struct DictionaryView: View {
                     )
                 )
                 .foregroundStyle(
-                    Color.black.opacity(
-                        0.46
-                    )
+                    FlowVoiceTheme.secondaryText
                 )
                 .lineSpacing(3)
             }
@@ -324,9 +322,7 @@ struct DictionaryView: View {
                 style: .continuous
             )
             .fill(
-                Color.white.opacity(
-                    0.72
-                )
+                FlowVoiceTheme.surface
             )
         )
         .overlay(
@@ -335,9 +331,7 @@ struct DictionaryView: View {
                 style: .continuous
             )
             .stroke(
-                Color.white.opacity(
-                    0.82
-                ),
+                FlowVoiceTheme.hairline,
                 lineWidth: 1
             )
         )
@@ -386,12 +380,8 @@ struct DictionaryView: View {
                     )
                     .foregroundStyle(
                         selectedTab == tab
-                        ? Color.black.opacity(
-                            0.82
-                        )
-                        : Color.black.opacity(
-                            0.42
-                        )
+                        ? FlowVoiceTheme.primaryText
+                        : FlowVoiceTheme.tertiaryText
                     )
                     .padding(
                         .horizontal,
@@ -411,9 +401,7 @@ struct DictionaryView: View {
                                         .continuous
                                 )
                                 .fill(
-                                    Color.white.opacity(
-                                        0.76
-                                    )
+                                    FlowVoiceTheme.selectedSurface
                                 )
                             }
                         }
@@ -446,9 +434,7 @@ struct DictionaryView: View {
                         "magnifyingglass"
                 )
                 .foregroundStyle(
-                    Color.black.opacity(
-                        0.32
-                    )
+                    FlowVoiceTheme.tertiaryText
                 )
 
                 TextField(
@@ -458,6 +444,9 @@ struct DictionaryView: View {
                 )
                 .textFieldStyle(
                     .plain
+                )
+                .foregroundStyle(
+                    FlowVoiceTheme.primaryText
                 )
                 .font(
                     .custom(
@@ -480,9 +469,7 @@ struct DictionaryView: View {
                         .continuous
                 )
                 .fill(
-                    Color.white.opacity(
-                        0.6
-                    )
+                    FlowVoiceTheme.inputSurface
                 )
             )
 
@@ -524,9 +511,7 @@ struct DictionaryView: View {
                     .weight(.medium)
                 )
                 .foregroundStyle(
-                    Color.black.opacity(
-                        0.55
-                    )
+                    FlowVoiceTheme.secondaryText
                 )
                 .padding(
                     .horizontal,
@@ -542,9 +527,7 @@ struct DictionaryView: View {
                             .continuous
                     )
                     .fill(
-                        Color.white.opacity(
-                            0.6
-                        )
+                        FlowVoiceTheme.inputSurface
                     )
                 )
             }
@@ -584,6 +567,9 @@ struct DictionaryView: View {
                     width: 38,
                     height: 38
                 )
+                .foregroundStyle(
+                    FlowVoiceTheme.secondaryText
+                )
                 .background(
                     RoundedRectangle(
                         cornerRadius: 11,
@@ -591,9 +577,7 @@ struct DictionaryView: View {
                             .continuous
                     )
                     .fill(
-                        Color.white.opacity(
-                            0.6
-                        )
+                        FlowVoiceTheme.inputSurface
                     )
                 )
             }
@@ -624,9 +608,7 @@ struct DictionaryView: View {
                 )
                 .tracking(1.4)
                 .foregroundStyle(
-                    Color.black.opacity(
-                        0.34
-                    )
+                    FlowVoiceTheme.tertiaryText
                 )
 
                 Spacer()
@@ -641,9 +623,7 @@ struct DictionaryView: View {
                     )
                 )
                 .foregroundStyle(
-                    Color.black.opacity(
-                        0.32
-                    )
+                    FlowVoiceTheme.mutedText
                 )
             }
 
@@ -810,12 +790,8 @@ struct DictionaryView: View {
             )
             .foregroundStyle(
                 entry.type == .replacement
-                ? Color.orange.opacity(
-                    0.75
-                )
-                : Color.purple.opacity(
-                    0.68
-                )
+                ? replacementAccent.opacity(0.86)
+                : termAccent.opacity(0.82)
             )
             .frame(
                 width: 36,
@@ -830,11 +806,11 @@ struct DictionaryView: View {
                 .fill(
                     (
                         entry.type == .replacement
-                        ? Color.orange
-                        : Color.purple
+                        ? replacementAccent
+                        : termAccent
                     )
                     .opacity(
-                        0.07
+                        0.17
                     )
                 )
             )
@@ -860,6 +836,9 @@ struct DictionaryView: View {
                             )
                             .weight(.semibold)
                         )
+                        .foregroundStyle(
+                            FlowVoiceTheme.primaryText
+                        )
 
                         Image(
                             systemName:
@@ -871,9 +850,7 @@ struct DictionaryView: View {
                             )
                         )
                         .foregroundStyle(
-                            Color.black.opacity(
-                                0.26
-                            )
+                            FlowVoiceTheme.mutedText
                         )
 
                         Text(
@@ -888,9 +865,7 @@ struct DictionaryView: View {
                             .weight(.medium)
                         )
                         .foregroundStyle(
-                            Color.black.opacity(
-                                0.66
-                            )
+                            FlowVoiceTheme.secondaryText
                         )
                     }
 
@@ -906,6 +881,9 @@ struct DictionaryView: View {
                         )
                         .weight(.semibold)
                     )
+                    .foregroundStyle(
+                        FlowVoiceTheme.primaryText
+                    )
                 }
 
                 Text(
@@ -920,9 +898,7 @@ struct DictionaryView: View {
                     )
                 )
                 .foregroundStyle(
-                    Color.black.opacity(
-                        0.32
-                    )
+                    FlowVoiceTheme.tertiaryText
                 )
             }
 
@@ -946,7 +922,7 @@ struct DictionaryView: View {
                     .weight(.semibold)
                 )
                 .foregroundStyle(
-                    .white
+                    FlowVoiceTheme.accentButtonText
                 )
                 .padding(
                     .horizontal,
@@ -956,7 +932,7 @@ struct DictionaryView: View {
                     height: 30
                 )
                 .background(
-                    Color.black,
+                    FlowVoiceTheme.accentButton,
                     in:
                         RoundedRectangle(
                             cornerRadius: 8,
@@ -987,9 +963,7 @@ struct DictionaryView: View {
                         )
                     )
                     .foregroundStyle(
-                        Color.black.opacity(
-                            0.34
-                        )
+                        FlowVoiceTheme.mutedText
                     )
                     .frame(
                         width: 28,
@@ -1013,9 +987,7 @@ struct DictionaryView: View {
                     .weight(.semibold)
                 )
                 .foregroundStyle(
-                    Color.black.opacity(
-                        0.34
-                    )
+                    FlowVoiceTheme.tertiaryText
                 )
 
                 Button {
@@ -1038,9 +1010,7 @@ struct DictionaryView: View {
                         )
                     )
                     .foregroundStyle(
-                        Color.black.opacity(
-                            0.3
-                        )
+                        FlowVoiceTheme.mutedText
                     )
                     .frame(
                         width: 28,
@@ -1069,9 +1039,7 @@ struct DictionaryView: View {
                         )
                     )
                     .foregroundStyle(
-                        Color.black.opacity(
-                            0.3
-                        )
+                        FlowVoiceTheme.mutedText
                     )
                     .frame(
                         width: 28,
@@ -1097,9 +1065,7 @@ struct DictionaryView: View {
                     .continuous
             )
             .fill(
-                Color.white.opacity(
-                    0.7
-                )
+                FlowVoiceTheme.surface
             )
         )
         .overlay(
@@ -1109,9 +1075,7 @@ struct DictionaryView: View {
                     .continuous
             )
             .stroke(
-                Color.black.opacity(
-                    0.04
-                ),
+                FlowVoiceTheme.hairline,
                 lineWidth: 1
             )
         )
@@ -1171,9 +1135,7 @@ struct DictionaryView: View {
                 )
             )
             .foregroundStyle(
-                Color.black.opacity(
-                    0.2
-                )
+                FlowVoiceTheme.mutedText
             )
 
             Text(
@@ -1187,9 +1149,7 @@ struct DictionaryView: View {
                 .weight(.medium)
             )
             .foregroundStyle(
-                Color.black.opacity(
-                    0.48
-                )
+                FlowVoiceTheme.secondaryText
             )
 
             Text(
@@ -1202,9 +1162,7 @@ struct DictionaryView: View {
                 )
             )
             .foregroundStyle(
-                Color.black.opacity(
-                    0.32
-                )
+                FlowVoiceTheme.tertiaryText
             )
         }
         .frame(
@@ -1218,9 +1176,18 @@ struct DictionaryView: View {
                     .continuous
             )
             .fill(
-                Color.white.opacity(
-                    0.45
-                )
+                FlowVoiceTheme.surface
+            )
+        )
+        .overlay(
+            RoundedRectangle(
+                cornerRadius: 18,
+                style:
+                    .continuous
+            )
+            .stroke(
+                FlowVoiceTheme.hairline,
+                lineWidth: 1
             )
         )
     }
@@ -1285,9 +1252,7 @@ struct DictionaryView: View {
                 )
             )
             .foregroundStyle(
-                Color.black.opacity(
-                    0.35
-                )
+                FlowVoiceTheme.tertiaryText
             )
         }
         .frame(
@@ -1325,7 +1290,7 @@ struct DictionaryView: View {
         )
         .foregroundStyle(
             Color.red.opacity(
-                0.72
+                0.86
             )
         )
         .padding(12)
@@ -1337,7 +1302,7 @@ struct DictionaryView: View {
             )
             .fill(
                 Color.red.opacity(
-                    0.05
+                    0.14
                 )
             )
         )
@@ -1635,7 +1600,7 @@ private struct DictionaryEntryEditor:
                 )
                 .foregroundStyle(
                     Color.red.opacity(
-                        0.75
+                        0.86
                     )
                 )
             }
@@ -1653,11 +1618,13 @@ private struct DictionaryEntryEditor:
                 : 370
         )
         .background(
-            Color(
-                red: 0.972,
-                green: 0.962,
-                blue: 0.940
-            )
+            FlowVoiceTheme.elevatedSurface
+        )
+        .foregroundStyle(
+            FlowVoiceTheme.primaryText
+        )
+        .preferredColorScheme(
+            .dark
         )
         .onAppear {
 
@@ -1685,6 +1652,9 @@ private struct DictionaryEntryEditor:
                 )
                 .weight(.semibold)
             )
+            .foregroundStyle(
+                FlowVoiceTheme.primaryText
+            )
 
             Text(
                 "Improve recognition or automatically replace text after transcription."
@@ -1696,9 +1666,7 @@ private struct DictionaryEntryEditor:
                 )
             )
             .foregroundStyle(
-                Color.black.opacity(
-                    0.42
-                )
+                FlowVoiceTheme.secondaryText
             )
         }
     }
@@ -1750,6 +1718,9 @@ private struct DictionaryEntryEditor:
             .textFieldStyle(
                 .plain
             )
+            .foregroundStyle(
+                FlowVoiceTheme.primaryText
+            )
             .padding(
                 .horizontal,
                 12
@@ -1764,9 +1735,7 @@ private struct DictionaryEntryEditor:
                         .continuous
                 )
                 .fill(
-                    Color.white.opacity(
-                        0.72
-                    )
+                    FlowVoiceTheme.inputSurface
                 )
             )
         }
@@ -1788,6 +1757,9 @@ private struct DictionaryEntryEditor:
             .textFieldStyle(
                 .plain
             )
+            .foregroundStyle(
+                FlowVoiceTheme.primaryText
+            )
             .padding(
                 .horizontal,
                 12
@@ -1802,9 +1774,7 @@ private struct DictionaryEntryEditor:
                         .continuous
                 )
                 .fill(
-                    Color.white.opacity(
-                        0.72
-                    )
+                    FlowVoiceTheme.inputSurface
                 )
             )
         }
@@ -1865,9 +1835,7 @@ private struct DictionaryEntryEditor:
             )
             .tracking(1.2)
             .foregroundStyle(
-                Color.black.opacity(
-                    0.34
-                )
+                FlowVoiceTheme.tertiaryText
             )
 
             content()
@@ -1889,6 +1857,9 @@ private struct DictionaryEntryEditor:
             }
             .buttonStyle(
                 .plain
+            )
+            .foregroundStyle(
+                FlowVoiceTheme.secondaryText
             )
 
             Button {
@@ -1921,6 +1892,9 @@ private struct DictionaryEntryEditor:
             }
             .buttonStyle(
                 .borderedProminent
+            )
+            .tint(
+                FlowVoiceTheme.accentButton
             )
             .disabled(
                 !canSave
