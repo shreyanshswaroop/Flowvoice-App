@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct SignUpView: View {
-
     @EnvironmentObject var authManager: AuthManager
 
     @State private var name = ""
@@ -11,429 +10,237 @@ struct SignUpView: View {
 
     let onSignIn: () -> Void
 
-    private var passwordsMatch: Bool {
-        password == confirmPassword
-    }
-
     var body: some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 20
-        ) {
-
+        VStack(spacing: 18) {
             header
 
-            socialButtons
+            googleButton
 
             divider
 
             VStack(spacing: 14) {
-
                 authField(
                     title: "Name",
-                    text: $name,
-                    placeholder: "Your name"
+                    placeholder: "Your name",
+                    text: $name
                 )
 
                 authField(
                     title: "Email",
-                    text: $email,
-                    placeholder: "you@example.com"
+                    placeholder: "you@example.com",
+                    text: $email
                 )
 
-                secureField(
+                passwordField(
                     title: "Password",
-                    text: $password,
-                    placeholder: "At least 8 characters"
+                    placeholder: "",
+                    text: $password
                 )
 
-                secureField(
-                    title: "Confirm password",
-                    text: $confirmPassword,
-                    placeholder: "Enter password again"
+                passwordField(
+                    title: "Confirm Password",
+                    placeholder: "",
+                    text: $confirmPassword
                 )
             }
 
-            if !confirmPassword.isEmpty &&
-                !passwordsMatch {
-
-                Text(
-                    "Passwords do not match."
-                )
-                .font(
-                    .system(
-                        size: 13,
-                        weight: .medium
-                    )
-                )
-                .foregroundStyle(.red)
-            }
-
-            if let error =
-                authManager.errorMessage {
-
+            if let error = authManager.errorMessage {
                 Text(error)
-                    .font(
-                        .system(
-                            size: 13,
-                            weight: .medium
-                        )
-                    )
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            createAccountButton
+            signUpButton
 
-            accountFooter
+            footer
         }
+        .foregroundStyle(
+            FlowVoiceTheme.primaryText
+        )
     }
-
-    // MARK: - Header
 
     private var header: some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 7
-        ) {
-
-            Text(
-                "Create your account"
-            )
-            .font(
-                .system(
-                    size: 32,
-                    weight: .regular,
-                    design: .serif
-                )
-            )
-            .foregroundStyle(
-                FlowVoiceTheme.primaryText
-            )
-
-            Text(
-                "Start using FlowVoice across your Mac."
-            )
-            .font(
-                .system(
-                    size: 15,
-                    weight: .regular
-                )
-            )
-            .foregroundStyle(
-                .secondary
-            )
-        }
-    }
-
-    // MARK: - Social Buttons
-
-    private var socialButtons: some View {
-
-        HStack(spacing: 12) {
-
-            socialIconButton {
-
-                Image(
-                    systemName: "apple.logo"
-                )
-                .font(
-                    .system(
-                        size: 17,
-                        weight: .semibold
-                    )
-                )
+        VStack(spacing: 8) {
+            Text("Create an account")
+                .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(
                     FlowVoiceTheme.primaryText
                 )
+        }
+    }
 
-            } action: {
-                // Apple signup comes next
+    private var googleButton: some View {
+        Button {
+            Task {
+                await authManager.signInWithGoogle()
             }
-
-            socialIconButton {
-
+        } label: {
+            HStack(spacing: 10) {
                 Image("GoogleLogo")
                     .resizable()
                     .scaledToFit()
-                    .frame(
-                        width: 18,
-                        height: 18
+                    .frame(width: 18, height: 18)
+
+                Text("Sign up with Google")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(
+                        FlowVoiceTheme.primaryText
                     )
 
-            } action: {
-                // Google signup comes next
+                Spacer()
             }
-        }
-    }
-
-    private func socialIconButton<Content: View>(
-        @ViewBuilder content: () -> Content,
-        action: @escaping () -> Void
-    ) -> some View {
-
-        Button(
-            action: action
-        ) {
-
-            content()
-                .frame(
-                    maxWidth: .infinity
-                )
-                .frame(
-                    height: 44
-                )
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .frame(height: 46)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(FlowVoiceTheme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(FlowVoiceTheme.hairline, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
-        .background {
-
-            RoundedRectangle(
-                cornerRadius: 11,
-                style: .continuous
-            )
-            .fill(
-                FlowVoiceTheme.inputSurface
-            )
-        }
-        .overlay {
-
-            RoundedRectangle(
-                cornerRadius: 11,
-                style: .continuous
-            )
-            .stroke(
-                FlowVoiceTheme.hairline,
-                lineWidth: 1
-            )
-        }
     }
-
-    // MARK: - Divider
 
     private var divider: some View {
-
-        HStack(spacing: 12) {
-
-            Rectangle()
-                .fill(
-                    FlowVoiceTheme.divider
-                )
-                .frame(height: 1)
-
-            Text("or")
-                .font(
-                    .system(
-                        size: 12,
-                        weight: .medium
-                    )
-                )
-                .foregroundStyle(
-                    .secondary
-                )
-
-            Rectangle()
-                .fill(
-                    FlowVoiceTheme.divider
-                )
-                .frame(height: 1)
-        }
+        Rectangle()
+            .fill(FlowVoiceTheme.divider)
+            .frame(height: 1)
+            .padding(.vertical, 8)
     }
 
-    // MARK: - Create Account
-
-    private var createAccountButton: some View {
-
+    private var signUpButton: some View {
         Button {
+            guard password == confirmPassword else {
+                authManager.errorMessage = "Passwords do not match."
+                return
+            }
 
             Task {
-
                 await authManager.signUp(
                     name: name,
                     email: email,
                     password: password
                 )
             }
-
         } label: {
-
             HStack {
-
                 Spacer()
 
                 if authManager.isLoading {
-
                     ProgressView()
                         .controlSize(.small)
-
-                } else {
-
-                    Text(
-                        "Create Account"
-                    )
-                    .font(
-                        .system(
-                            size: 14,
-                            weight: .semibold
+                        .tint(
+                            FlowVoiceTheme.accentButtonText
                         )
-                    )
+                } else {
+                    Text("Sign up")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(
+                            FlowVoiceTheme.accentButtonText
+                        )
                 }
 
                 Spacer()
             }
-            .frame(height: 44)
-            .foregroundStyle(
-                FlowVoiceTheme.accentButtonText
-            )
+            .frame(height: 48)
             .background(
-                FlowVoiceTheme.accentButton,
-                in:
-                    RoundedRectangle(
-                        cornerRadius: 11,
-                        style: .continuous
-                    )
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(buttonFill)
             )
         }
         .buttonStyle(.plain)
         .disabled(
             name.isEmpty ||
             email.isEmpty ||
-            password.count < 8 ||
-            !passwordsMatch ||
+            password.isEmpty ||
+            confirmPassword.isEmpty ||
             authManager.isLoading
         )
     }
 
-    // MARK: - Footer
+    private var buttonFill: Color {
+        if name.isEmpty || email.isEmpty || password.isEmpty || confirmPassword.isEmpty {
+            return FlowVoiceTheme.primaryText.opacity(0.18)
+        } else {
+            return FlowVoiceTheme.accentButton
+        }
+    }
 
-    private var accountFooter: some View {
+    private var footer: some View {
+        HStack(spacing: 4) {
+            Text("Already registered?")
+                .foregroundStyle(FlowVoiceTheme.secondaryText)
 
-        HStack(spacing: 5) {
-
-            Text(
-                "Already have an account?"
-            )
-            .foregroundStyle(
-                .secondary
-            )
-
-            Button(
-                "Sign in"
-            ) {
-
+            Button("Sign in") {
                 onSignIn()
             }
             .buttonStyle(.plain)
-            .fontWeight(.semibold)
-        }
-        .font(
-            .system(
-                size: 13
+            .foregroundStyle(
+                FlowVoiceTheme.primaryText
             )
-        )
+            .underline()
+        }
+        .font(.system(size: 13))
+        .padding(.top, 2)
     }
-
-    // MARK: - Text Field
 
     private func authField(
         title: String,
-        text: Binding<String>,
-        placeholder: String
+        placeholder: String,
+        text: Binding<String>
     ) -> some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 8
-        ) {
-
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(
-                    .system(
-                        size: 13,
-                        weight: .medium
-                    )
-                )
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(FlowVoiceTheme.primaryText)
 
-            TextField(
-                placeholder,
-                text: text
-            )
-            .textFieldStyle(.plain)
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .background {
-
-                RoundedRectangle(
-                    cornerRadius: 11,
-                    style: .continuous
+            TextField(placeholder, text: text)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 14)
+                .frame(height: 46)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(FlowVoiceTheme.inputSurface)
                 )
-                .fill(
-                    FlowVoiceTheme.inputSurface
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(FlowVoiceTheme.hairline, lineWidth: 1)
                 )
-            }
-            .overlay {
-
-                RoundedRectangle(
-                    cornerRadius: 11,
-                    style: .continuous
+                .foregroundStyle(
+                    FlowVoiceTheme.primaryText
                 )
-                .stroke(
-                    FlowVoiceTheme.hairline,
-                    lineWidth: 1
-                )
-            }
         }
     }
 
-    // MARK: - Secure Field
-
-    private func secureField(
+    private func passwordField(
         title: String,
-        text: Binding<String>,
-        placeholder: String
+        placeholder: String,
+        text: Binding<String>
     ) -> some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 8
-        ) {
-
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(
-                    .system(
-                        size: 13,
-                        weight: .medium
-                    )
-                )
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(FlowVoiceTheme.primaryText)
 
-            SecureField(
-                placeholder,
-                text: text
-            )
-            .textFieldStyle(.plain)
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .background {
-
-                RoundedRectangle(
-                    cornerRadius: 11,
-                    style: .continuous
+            SecureField(placeholder, text: text)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 14)
+                .frame(height: 46)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(FlowVoiceTheme.inputSurface)
                 )
-                .fill(
-                    FlowVoiceTheme.inputSurface
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(FlowVoiceTheme.hairline, lineWidth: 1)
                 )
-            }
-            .overlay {
-
-                RoundedRectangle(
-                    cornerRadius: 11,
-                    style: .continuous
+                .foregroundStyle(
+                    FlowVoiceTheme.primaryText
                 )
-                .stroke(
-                    FlowVoiceTheme.hairline,
-                    lineWidth: 1
-                )
-            }
         }
     }
 }

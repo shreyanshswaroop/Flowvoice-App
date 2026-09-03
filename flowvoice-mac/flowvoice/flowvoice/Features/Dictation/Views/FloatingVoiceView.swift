@@ -8,6 +8,10 @@ struct FloatingVoiceView: View {
     @State private var recordingStartedAt = Date()
     @State private var lastRecordedSeconds = 0
 
+    @AppStorage(FlowVoiceAppearance.storageKey)
+    private var appearanceRawValue =
+        FlowVoiceAppearance.system.rawValue
+
     private let controlHeight: CGFloat = 48
     private let mainWidth: CGFloat = 132
 
@@ -18,6 +22,9 @@ struct FloatingVoiceView: View {
         }
         .frame(width: 150, height: 64)
         .background(Color.clear)
+        .preferredColorScheme(
+            selectedAppearance.colorScheme
+        )
         .onAppear {
             if controller.state == .listening {
                 recordingStartedAt = Date()
@@ -39,6 +46,12 @@ struct FloatingVoiceView: View {
         }
     }
 
+    private var selectedAppearance: FlowVoiceAppearance {
+        FlowVoiceAppearance(
+            rawValue: appearanceRawValue
+        ) ?? .system
+    }
+
     // MARK: - Main Pill
 
     private var recordingControl: some View {
@@ -54,7 +67,7 @@ struct FloatingVoiceView: View {
         .background {
             Capsule()
                 .fill(
-                    Color(nsColor: .windowBackgroundColor)
+                    FlowVoiceTheme.windowBackground
                         .opacity(0.96)
                 )
         }
@@ -65,12 +78,6 @@ struct FloatingVoiceView: View {
                     lineWidth: 0.8
                 )
         }
-        .shadow(
-            color: .black.opacity(0.10),
-            radius: 8,
-            x: 0,
-            y: 3
-        )
     }
 
     // MARK: - Left Indicator

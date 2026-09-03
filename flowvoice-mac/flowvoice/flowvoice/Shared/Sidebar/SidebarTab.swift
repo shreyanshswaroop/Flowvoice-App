@@ -1,5 +1,3 @@
-import Foundation
-
 enum SidebarTab:
     String,
     CaseIterable,
@@ -21,6 +19,7 @@ enum SidebarTab:
     var id: String {
         rawValue
     }
+
 
     var icon: String {
 

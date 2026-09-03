@@ -17,10 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ notification: Notification
     ) {
 
-        NSApplication.shared.appearance =
-            NSAppearance(
-                named: .darkAqua
-            )
+        FlowVoiceAppearance.apply()
 
         AccessibilityPermissionService
             .shared

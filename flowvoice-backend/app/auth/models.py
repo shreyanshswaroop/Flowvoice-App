@@ -1,6 +1,8 @@
 from pydantic import BaseModel, EmailStr, Field
 
-
+class GoogleLoginRequest(BaseModel):
+    id_token: str
+    
 class SignUpRequest(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     email: EmailStr

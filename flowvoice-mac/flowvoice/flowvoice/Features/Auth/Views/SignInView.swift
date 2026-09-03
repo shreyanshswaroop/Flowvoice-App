@@ -8,18 +8,14 @@ struct SignInView: View {
     @State private var password = ""
 
     let onCreateAccount: () -> Void
-    
 
     var body: some View {
 
-        VStack(
-            alignment: .leading,
-            spacing: 22
-        ) {
+        VStack(spacing: 18) {
 
             header
 
-            socialButtons
+            googleButton
 
             divider
 
@@ -27,11 +23,15 @@ struct SignInView: View {
 
                 authField(
                     title: "Email",
-                    text: $email,
-                    placeholder: "you@example.com"
+                    placeholder: "you@example.com",
+                    text: $email
                 )
 
-                passwordField
+                passwordField(
+                    title: "Password",
+                    placeholder: "",
+                    text: $password
+                )
             }
 
             if let error = authManager.errorMessage {
@@ -39,16 +39,26 @@ struct SignInView: View {
                 Text(error)
                     .font(
                         .system(
-                            size: 13,
+                            size: 12,
                             weight: .medium
                         )
                     )
                     .foregroundStyle(.red)
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .leading
+                    )
             }
 
             signInButton
 
-            accountFooter
+            footer
+        }
+        .foregroundStyle(
+            FlowVoiceTheme.primaryText
+        )
+        .onAppear {
+            authManager.errorMessage = nil
         }
     }
 
@@ -56,61 +66,37 @@ struct SignInView: View {
 
     private var header: some View {
 
-        VStack(
-            alignment: .leading,
-            spacing: 7
-        ) {
+        VStack(spacing: 8) {
 
-            Text("Welcome back")
+            Text("Sign in")
                 .font(
                     .system(
-                        size: 32,
-                        weight: .regular,
-                        design: .serif
-                    )
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.primaryText
-                )
-
-            Text("Sign in to continue to FlowVoice.")
-                .font(
-                    .system(
-                        size: 15,
-                        weight: .regular
-                    )
-                )
-                .foregroundStyle(
-                    .secondary
-                )
-        }
-    }
-
-    // MARK: - Social Buttons
-
-    private var socialButtons: some View {
-
-        HStack(spacing: 12) {
-
-            socialIconButton {
-
-                Image(
-                    systemName: "apple.logo"
-                )
-                .font(
-                    .system(
-                        size: 17,
+                        size: 22,
                         weight: .semibold
                     )
                 )
                 .foregroundStyle(
                     FlowVoiceTheme.primaryText
                 )
-            } action: {
-                // Apple login comes next
+        }
+    }
+
+    // MARK: - Google
+
+    private var googleButton: some View {
+
+        Button {
+
+            authManager.errorMessage = nil
+
+            Task {
+                await authManager
+                    .signInWithGoogle()
             }
 
-            socialIconButton {
+        } label: {
+
+            HStack(spacing: 10) {
 
                 Image("GoogleLogo")
                     .resizable()
@@ -120,122 +106,39 @@ struct SignInView: View {
                         height: 18
                     )
 
-            } action: {
-                // Google login comes next
+                Text("Sign in with Google")
+                    .font(
+                        .system(
+                            size: 14,
+                            weight: .medium
+                        )
+                    )
+                    .foregroundStyle(
+                        FlowVoiceTheme.primaryText
+                    )
+
+                Spacer()
             }
-        }
-    }
-
-    private func socialIconButton<Content: View>(
-        @ViewBuilder content: () -> Content,
-        action: @escaping () -> Void
-    ) -> some View {
-
-        Button(
-            action: action
-        ) {
-
-            content()
-                .frame(
-                    maxWidth: .infinity
-                )
-                .frame(
-                    height: 44
-                )
-        }
-        .buttonStyle(.plain)
-        .background {
-
-            RoundedRectangle(
-                cornerRadius: 11,
-                style: .continuous
+            .frame(
+                maxWidth: .infinity
             )
-            .fill(
-                FlowVoiceTheme.inputSurface
+            .padding(
+                .horizontal,
+                16
             )
-        }
-        .overlay {
-
-            RoundedRectangle(
-                cornerRadius: 11,
-                style: .continuous
-            )
-            .stroke(
-                FlowVoiceTheme.hairline,
-                lineWidth: 1
-            )
-        }
-    }
-
-    // MARK: - Divider
-
-    private var divider: some View {
-
-        HStack(spacing: 12) {
-
-            Rectangle()
-                .fill(
-                    FlowVoiceTheme.divider
-                )
-                .frame(height: 1)
-
-            Text("or")
-                .font(
-                    .system(
-                        size: 12,
-                        weight: .medium
-                    )
-                )
-                .foregroundStyle(
-                    .secondary
-                )
-
-            Rectangle()
-                .fill(
-                    FlowVoiceTheme.divider
-                )
-                .frame(height: 1)
-        }
-    }
-
-    // MARK: - Password
-
-    private var passwordField: some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 8
-        ) {
-
-            Text("Password")
-                .font(
-                    .system(
-                        size: 13,
-                        weight: .medium
-                    )
-                )
-
-            SecureField(
-                "Enter your password",
-                text: $password
-            )
-            .textFieldStyle(.plain)
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .background {
-
+            .frame(height: 46)
+            .background(
                 RoundedRectangle(
-                    cornerRadius: 11,
+                    cornerRadius: 12,
                     style: .continuous
                 )
                 .fill(
-                    FlowVoiceTheme.inputSurface
+                    FlowVoiceTheme.surface
                 )
-            }
+            )
             .overlay {
-
                 RoundedRectangle(
-                    cornerRadius: 11,
+                    cornerRadius: 12,
                     style: .continuous
                 )
                 .stroke(
@@ -244,18 +147,62 @@ struct SignInView: View {
                 )
             }
         }
+        .buttonStyle(.plain)
+        .disabled(
+            authManager.isLoading
+        )
     }
 
-    // MARK: - Sign In
+    // MARK: - Divider
+
+    private var divider: some View {
+
+        Rectangle()
+            .fill(
+                FlowVoiceTheme.divider
+            )
+            .frame(height: 1)
+            .padding(
+                .vertical,
+                8
+            )
+    }
+
+    // MARK: - Sign In Button
 
     private var signInButton: some View {
 
         Button {
 
+            authManager.errorMessage = nil
+
+            let cleanEmail =
+                email.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+
+            guard isValidEmail(cleanEmail)
+            else {
+
+                authManager.errorMessage =
+                    "Please enter a valid email address."
+
+                return
+            }
+
+            guard password.count >= 8
+            else {
+
+                authManager.errorMessage =
+                    "Password must be at least 8 characters."
+
+                return
+            }
+
             Task {
 
                 await authManager.login(
-                    email: email,
+                    email: cleanEmail,
                     password: password
                 )
             }
@@ -270,31 +217,33 @@ struct SignInView: View {
 
                     ProgressView()
                         .controlSize(.small)
+                        .tint(
+                            FlowVoiceTheme.accentButtonText
+                        )
 
                 } else {
 
-                    Text("Sign In")
+                    Text("Sign in")
                         .font(
                             .system(
                                 size: 14,
-                                weight: .semibold
+                                weight: .medium
                             )
+                        )
+                        .foregroundStyle(
+                            FlowVoiceTheme.accentButtonText
                         )
                 }
 
                 Spacer()
             }
-            .frame(height: 44)
-            .foregroundStyle(
-                FlowVoiceTheme.accentButtonText
-            )
+            .frame(height: 48)
             .background(
-                FlowVoiceTheme.accentButton,
-                in:
-                    RoundedRectangle(
-                        cornerRadius: 11,
-                        style: .continuous
-                    )
+                RoundedRectangle(
+                    cornerRadius: 12,
+                    style: .continuous
+                )
+                .fill(buttonFill)
             )
         }
         .buttonStyle(.plain)
@@ -305,41 +254,59 @@ struct SignInView: View {
         )
     }
 
+    private var buttonFill: Color {
+
+        if email.isEmpty ||
+            password.isEmpty {
+
+            return FlowVoiceTheme.primaryText.opacity(0.18)
+
+        } else {
+
+            return FlowVoiceTheme.accentButton
+        }
+    }
+
     // MARK: - Footer
 
-    private var accountFooter: some View {
+    private var footer: some View {
 
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
 
             Text(
                 "Don't have an account?"
             )
             .foregroundStyle(
-                .secondary
+                FlowVoiceTheme.secondaryText
             )
 
-            Button(
-                "Create account"
-            ) {
+            Button("Sign up") {
+
+                authManager.errorMessage = nil
 
                 onCreateAccount()
             }
             .buttonStyle(.plain)
-            .fontWeight(.semibold)
+            .foregroundStyle(
+                FlowVoiceTheme.primaryText
+            )
+            .underline()
         }
         .font(
-            .system(
-                size: 13
-            )
+            .system(size: 13)
+        )
+        .padding(
+            .top,
+            2
         )
     }
 
-    // MARK: - Field
+    // MARK: - Email Field
 
     private func authField(
         title: String,
-        text: Binding<String>,
-        placeholder: String
+        placeholder: String,
+        text: Binding<String>
     ) -> some View {
 
         VStack(
@@ -354,28 +321,32 @@ struct SignInView: View {
                         weight: .medium
                     )
                 )
+                .foregroundStyle(
+                    FlowVoiceTheme.primaryText
+                )
 
             TextField(
                 placeholder,
                 text: text
             )
             .textFieldStyle(.plain)
-            .padding(.horizontal, 14)
-            .frame(height: 44)
-            .background {
-
+            .padding(
+                .horizontal,
+                14
+            )
+            .frame(height: 46)
+            .background(
                 RoundedRectangle(
-                    cornerRadius: 11,
+                    cornerRadius: 12,
                     style: .continuous
                 )
                 .fill(
                     FlowVoiceTheme.inputSurface
                 )
-            }
+            )
             .overlay {
-
                 RoundedRectangle(
-                    cornerRadius: 11,
+                    cornerRadius: 12,
                     style: .continuous
                 )
                 .stroke(
@@ -383,6 +354,83 @@ struct SignInView: View {
                     lineWidth: 1
                 )
             }
+            .foregroundStyle(
+                FlowVoiceTheme.primaryText
+            )
         }
+    }
+
+    // MARK: - Password Field
+
+    private func passwordField(
+        title: String,
+        placeholder: String,
+        text: Binding<String>
+    ) -> some View {
+
+        VStack(
+            alignment: .leading,
+            spacing: 8
+        ) {
+
+            Text(title)
+                .font(
+                    .system(
+                        size: 13,
+                        weight: .medium
+                    )
+                )
+                .foregroundStyle(
+                    FlowVoiceTheme.primaryText
+                )
+
+            SecureField(
+                placeholder,
+                text: text
+            )
+            .textFieldStyle(.plain)
+            .padding(
+                .horizontal,
+                14
+            )
+            .frame(height: 46)
+            .background(
+                RoundedRectangle(
+                    cornerRadius: 12,
+                    style: .continuous
+                )
+                .fill(
+                    FlowVoiceTheme.inputSurface
+                )
+            )
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: 12,
+                    style: .continuous
+                )
+                .stroke(
+                    FlowVoiceTheme.hairline,
+                    lineWidth: 1
+                )
+            }
+            .foregroundStyle(
+                FlowVoiceTheme.primaryText
+            )
+        }
+    }
+
+    // MARK: - Email Validation
+
+    private func isValidEmail(
+        _ email: String
+    ) -> Bool {
+
+        let pattern =
+            #"^[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"#
+
+        return email.range(
+            of: pattern,
+            options: .regularExpression
+        ) != nil
     }
 }

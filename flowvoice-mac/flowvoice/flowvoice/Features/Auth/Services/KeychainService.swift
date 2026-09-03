@@ -10,25 +10,46 @@ final class KeychainService {
     private let service = "flow.flowvoice"
     private let tokenAccount = "flowvoice.auth.token"
 
+    // MARK: - Save Token
+
+    @discardableResult
     func saveToken(_ token: String) -> Bool {
+
         guard let data = token.data(using: .utf8) else {
+            print("FlowVoice Keychain: failed to convert token to Data")
             return false
         }
 
-        let query: [String: Any] = [
+        let baseQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: tokenAccount
         ]
 
-        SecItemDelete(query as CFDictionary)
+        // Remove old token first.
+        let deleteStatus = SecItemDelete(
+            baseQuery as CFDictionary
+        )
 
-        let attributes: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: tokenAccount,
-            kSecValueData as String: data
-        ]
+        if deleteStatus != errSecSuccess &&
+            deleteStatus != errSecItemNotFound {
+
+            print(
+                "FlowVoice Keychain delete-before-save failed:",
+                deleteStatus,
+                errorMessage(for: deleteStatus)
+            )
+        }
+
+        var attributes = baseQuery
+
+        attributes[
+            kSecValueData as String
+        ] = data
+
+        attributes[
+            kSecAttrAccessible as String
+        ] = kSecAttrAccessibleAfterFirstUnlock
 
         let status = SecItemAdd(
             attributes as CFDictionary,
@@ -36,25 +57,42 @@ final class KeychainService {
         )
 
         if status == errSecSuccess {
-            print("FlowVoice auth token saved to Keychain")
+
+            print(
+                "FlowVoice auth token saved to Keychain"
+            )
+
             return true
         }
 
         print(
             "FlowVoice Keychain save failed:",
-            status
+            status,
+            errorMessage(for: status)
         )
 
         return false
     }
 
+    // MARK: - Load Token
+
     func loadToken() -> String? {
+
         let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: tokenAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecClass as String:
+                kSecClassGenericPassword,
+
+            kSecAttrService as String:
+                service,
+
+            kSecAttrAccount as String:
+                tokenAccount,
+
+            kSecReturnData as String:
+                true,
+
+            kSecMatchLimit as String:
+                kSecMatchLimitOne
         ]
 
         var result: AnyObject?
@@ -64,31 +102,99 @@ final class KeychainService {
             &result
         )
 
-        guard
-            status == errSecSuccess,
-            let data = result as? Data,
-            let token = String(
-                data: data,
-                encoding: .utf8
+        if status == errSecItemNotFound {
+            return nil
+        }
+
+        guard status == errSecSuccess else {
+
+            print(
+                "FlowVoice Keychain load failed:",
+                status,
+                errorMessage(for: status)
             )
-        else {
+
+            return nil
+        }
+
+        guard let data = result as? Data else {
+
+            print(
+                "FlowVoice Keychain: stored value is not Data"
+            )
+
+            return nil
+        }
+
+        guard let token = String(
+            data: data,
+            encoding: .utf8
+        ) else {
+
+            print(
+                "FlowVoice Keychain: failed to decode stored token"
+            )
+
             return nil
         }
 
         return token
     }
 
+    // MARK: - Delete Token
+
     func deleteToken() {
+
         let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: tokenAccount
+            kSecClass as String:
+                kSecClassGenericPassword,
+
+            kSecAttrService as String:
+                service,
+
+            kSecAttrAccount as String:
+                tokenAccount
         ]
 
-        SecItemDelete(
+        let status = SecItemDelete(
             query as CFDictionary
         )
 
-        print("FlowVoice auth token removed from Keychain")
+        if status == errSecSuccess {
+
+            print(
+                "FlowVoice auth token removed from Keychain"
+            )
+
+            return
+        }
+
+        if status == errSecItemNotFound {
+            return
+        }
+
+        print(
+            "FlowVoice Keychain delete failed:",
+            status,
+            errorMessage(for: status)
+        )
+    }
+
+    // MARK: - Error Description
+
+    private func errorMessage(
+        for status: OSStatus
+    ) -> String {
+
+        if let message =
+            SecCopyErrorMessageString(
+                status,
+                nil
+            ) as String? {
+
+            return message
+        }
+
+        return "Unknown Keychain error"
     }
 }

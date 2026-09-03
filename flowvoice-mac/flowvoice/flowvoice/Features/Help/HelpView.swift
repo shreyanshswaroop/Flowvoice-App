@@ -4,8 +4,6 @@ struct HelpView: View {
 
     @Environment(\.openURL) private var openURL
 
-    let openSettingsSection: (SettingsSection) -> Void
-
     private let helpCenterURL = URL(
         string: "https://yourwebsite.com/help"
     )!
@@ -56,21 +54,21 @@ struct HelpView: View {
                         icon: "command",
                         title: "Shortcuts"
                     ) {
-                        openSettingsSection(.keyboard)
+                        // Add your shortcuts help action later
                     }
 
                     helpRow(
                         icon: "mic",
                         title: "Microphone"
                     ) {
-                        openSettingsSection(.voice)
+                        // Add microphone help action later
                     }
 
                     helpRow(
                         icon: "globe",
                         title: "Languages"
                     ) {
-                        openSettingsSection(.general)
+                        // Add language help action later
                     }
 
                     Divider()
@@ -186,7 +184,9 @@ struct HelpView: View {
                 12
             )
             .frame(height: 46)
-            .contentShape(Rectangle())
+            .contentShape(
+                Rectangle()
+            )
         }
         .buttonStyle(
             HelpRowButtonStyle()
@@ -211,10 +211,10 @@ private struct HelpRowButtonStyle: ButtonStyle {
                 )
                 .fill(
                     configuration.isPressed
-                        ? FlowVoiceTheme.pressedSurface
-                        : isHovered
-                            ? FlowVoiceTheme.hoverSurface
-                            : Color.clear
+                    ? FlowVoiceTheme.pressedSurface
+                    : isHovered
+                    ? FlowVoiceTheme.hoverSurface
+                    : Color.clear
                 )
             }
             .onHover { hovering in

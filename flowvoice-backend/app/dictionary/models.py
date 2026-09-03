@@ -13,12 +13,6 @@ DictionaryScope = Literal[
     "shared",
 ]
 
-DictionarySource = Literal[
-    "manual",
-    "suggested",
-]
-
-
 class CreateDictionaryEntryRequest(
     BaseModel
 ):
@@ -54,35 +48,3 @@ class UpdateDictionaryEntryRequest(
     )
 
     scope: DictionaryScope | None = None
-
-
-class DictionaryEntryResponse(
-    BaseModel
-):
-    id: str
-
-    type: DictionaryEntryType
-
-    value: str
-
-    replacement: str | None
-
-    scope: DictionaryScope
-
-    source: DictionarySource
-
-    active: bool
-
-    created_at: str
-
-    updated_at: str
-
-
-class DictionarySuggestionResponse(
-    BaseModel
-):
-    id: str
-
-    value: str
-
-    created_at: str

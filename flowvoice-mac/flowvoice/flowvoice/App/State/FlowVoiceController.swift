@@ -280,7 +280,7 @@ final class FlowVoiceController: ObservableObject {
                 }
 
                 guard
-                    await self.mode == .dictation
+                    self.mode == .dictation
                 else {
                     return
                 }
@@ -328,7 +328,7 @@ final class FlowVoiceController: ObservableObject {
                 }
 
                 guard
-                    await self.mode == .notetaker
+                    self.mode == .notetaker
                 else {
                     return
                 }

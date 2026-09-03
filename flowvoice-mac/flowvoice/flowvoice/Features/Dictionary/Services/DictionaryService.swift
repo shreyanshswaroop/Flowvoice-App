@@ -116,45 +116,6 @@ final class DictionaryService {
             )
     }
 
-    // MARK: - Convenience: Add Word
-
-    func addTerm(
-        _ value: String
-    ) async throws
-        -> DictionaryEntry {
-
-        try await createEntry(
-            type:
-                .term,
-            value:
-                value,
-            replacement:
-                nil,
-            scope:
-                .personal
-        )
-    }
-
-    // MARK: - Convenience: Add Replacement
-
-    func addReplacement(
-        from value: String,
-        to replacement: String
-    ) async throws
-        -> DictionaryEntry {
-
-        try await createEntry(
-            type:
-                .replacement,
-            value:
-                value,
-            replacement:
-                replacement,
-            scope:
-                .personal
-        )
-    }
-
     // MARK: ============================================
     // MARK: UPDATE
     // MARK: ============================================

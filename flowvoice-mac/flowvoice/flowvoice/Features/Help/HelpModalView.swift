@@ -6,9 +6,7 @@ struct HelpModalView: View {
 
     var body: some View {
 
-        HelpView(
-            openSettingsSection: openSettingsSection
-        )
+        HelpView()
         .frame(
             width: 620,
             height: 420

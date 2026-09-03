@@ -144,7 +144,7 @@ struct FlowVoiceSidebar: View {
 
                 HStack(spacing: 3) {
 
-                    Text("Hush")
+                    Text("Flow")
                         .font(
                             .system(
                                 size: 28,
@@ -153,7 +153,7 @@ struct FlowVoiceSidebar: View {
                             )
                         )
 
-                    Text("Note")
+                    Text("Voice")
                         .font(
                             .system(
                                 size: 29,

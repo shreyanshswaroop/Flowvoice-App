@@ -6,6 +6,7 @@ final class FloatingVoiceWindowController {
 
     private let panel: NSPanel
     private var hideWorkItem: DispatchWorkItem?
+    private var appearanceObserver: NSObjectProtocol?
 
     private let panelWidth: CGFloat = 150
     private let panelHeight: CGFloat = 68
@@ -37,10 +38,6 @@ final class FloatingVoiceWindowController {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false
-        panel.appearance =
-            NSAppearance(
-                named: .darkAqua
-            )
 
         panel.hidesOnDeactivate = false
 
@@ -50,6 +47,25 @@ final class FloatingVoiceWindowController {
 
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
+
+        applyAppearance()
+
+        appearanceObserver =
+            NotificationCenter.default.addObserver(
+                forName: .flowVoiceAppearanceChanged,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let appearance =
+                    notification.object as? FlowVoiceAppearance
+                else {
+                    return
+                }
+
+                self?.applyAppearance(
+                    appearance
+                )
+            }
 
         panel.collectionBehavior = [
             .canJoinAllSpaces,
@@ -66,7 +82,6 @@ final class FloatingVoiceWindowController {
                     FloatingVoiceView(
                         controller: controller
                     )
-                    .preferredColorScheme(.dark)
             )
 
         hostingView.frame = NSRect(
@@ -83,6 +98,21 @@ final class FloatingVoiceWindowController {
 
         panel.contentView =
             hostingView
+    }
+
+    deinit {
+        if let appearanceObserver {
+            NotificationCenter.default.removeObserver(
+                appearanceObserver
+            )
+        }
+    }
+
+    private func applyAppearance(
+        _ appearance: FlowVoiceAppearance = .stored
+    ) {
+        panel.appearance =
+            appearance.nsAppearance
     }
 
     // MARK: - Show

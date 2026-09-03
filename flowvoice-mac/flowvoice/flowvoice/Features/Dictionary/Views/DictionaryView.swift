@@ -120,9 +120,6 @@ struct DictionaryView: View {
         .background(
             FlowVoiceTheme.pageBackground
         )
-        .preferredColorScheme(
-            .dark
-        )
         .task {
 
             await loadAll()
@@ -1622,9 +1619,6 @@ private struct DictionaryEntryEditor:
         )
         .foregroundStyle(
             FlowVoiceTheme.primaryText
-        )
-        .preferredColorScheme(
-            .dark
         )
         .onAppear {
 

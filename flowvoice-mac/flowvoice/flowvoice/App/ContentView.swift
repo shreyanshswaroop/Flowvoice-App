@@ -1,11 +1,13 @@
 import SwiftUI
-import AppKit
 import Combine
 
 struct ContentView: View {
 
     @EnvironmentObject var controller:
         FlowVoiceController
+
+    @EnvironmentObject var authManager:
+        AuthManager
 
     @State private var selectedTab:
         SidebarTab = .dictation
@@ -34,33 +36,79 @@ struct ContentView: View {
     var body: some View {
 
         ZStack {
+            
+            FlowVoiceTheme.sidebarBackground
+                        .ignoresSafeArea()
 
             HStack(spacing: 0) {
 
-                FlowVoiceSidebar(
-                    selectedTab: $selectedTab,
-                    showSettings: $showSettings,
-                    showHelp: $showHelp,
-                    isCollapsed:
-                        $isSidebarCollapsed
-                )
-                .frame(
-                    width:
-                        isSidebarCollapsed
-                        ? 64
-                        : 225
-                )
-                .background(
-                    FlowVoiceTheme.sidebarBackground
-                )
+                // MARK: - Left Sidebar
 
-                Rectangle()
-                    .fill(
-                        FlowVoiceTheme.divider
+                if showSettings {
+
+                    SettingsSidebar(
+                        selectedSection:
+                            $settingsSection,
+                        showSettings:
+                            $showSettings
                     )
-                    .frame(width: 1)
+                    .environmentObject(
+                        authManager
+                    )
+                    .frame(
+                        width: 225
+                    )
+                    .transition(
+                        .opacity
+                    )
 
-                contentArea
+                } else {
+
+                    FlowVoiceSidebar(
+                        selectedTab:
+                            $selectedTab,
+                        showSettings:
+                            $showSettings,
+                        showHelp:
+                            $showHelp,
+                        isCollapsed:
+                            $isSidebarCollapsed
+                    )
+                    .frame(
+                        width:
+                            isSidebarCollapsed
+                            ? 64
+                            : 225
+                    )
+                    .transition(
+                        .opacity
+                    )
+                }
+
+                // MARK: - Main Canvas
+
+                // MARK: - Main Canvas
+
+                ZStack {
+
+                    FlowVoiceTheme.sidebarBackground
+
+                    Group {
+
+                        if showSettings {
+
+                            SettingsView(
+                                showSettings: $showSettings,
+                                selectedSection: settingsSection
+                            )
+                            .environmentObject(controller)
+                            .environmentObject(authManager)
+
+                        } else {
+
+                            contentArea
+                        }
+                    }
                     .frame(
                         maxWidth: .infinity,
                         maxHeight: .infinity
@@ -68,25 +116,39 @@ struct ContentView: View {
                     .background(
                         FlowVoiceTheme.pageBackground
                     )
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: 22,
+                            style: .continuous
+                        )
+                    )
+                    .overlay {
+
+                        RoundedRectangle(
+                            cornerRadius: 22,
+                            style: .continuous
+                        )
+                        .stroke(
+                            FlowVoiceTheme.divider,
+                            lineWidth: 0.6
+                        )
+                    }
+                    .padding(
+                        EdgeInsets(
+                            top: 0,
+                            leading: 8,
+                            bottom: 10,
+                            trailing: 10
+                        )
+                    )
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity
+                )
             }
 
-            if showSettings {
-
-                settingsBackdrop
-
-                SettingsModalView(
-                    selectedSection:
-                        $settingsSection
-                )
-                .environmentObject(
-                    controller
-                )
-                .transition(
-                    .scale(scale: 0.97)
-                    .combined(with: .opacity)
-                )
-                .zIndex(2)
-            }
+            // MARK: - Help Modal
 
             if showHelp {
 
@@ -103,8 +165,12 @@ struct ContentView: View {
                             dampingFraction: 0.88
                         )
                     ) {
-                        showHelp = false
-                        showSettings = true
+
+                        showHelp =
+                            false
+
+                        showSettings =
+                            true
                     }
                 }
                 .transition(
@@ -115,20 +181,44 @@ struct ContentView: View {
             }
         }
 
+        // MARK: - Load History
+
         .task {
+
             guard !hasLoadedHistory else {
                 return
             }
 
-            hasLoadedHistory = true
+            hasLoadedHistory =
+                true
 
             await loadHistory()
         }
+
+        // MARK: - Sidebar Animation
 
         .animation(
             .easeInOut(duration: 0.22),
             value: isSidebarCollapsed
         )
+
+        // MARK: - Settings State
+
+        .onChange(
+            of: showSettings
+        ) { _, isShowingSettings in
+
+            NotificationCenter
+                .default
+                .post(
+                    name:
+                        .flowVoiceSettingsStateChanged,
+                    object:
+                        isShowingSettings
+                )
+        }
+
+        // MARK: - Sidebar State
 
         .onChange(
             of: isSidebarCollapsed
@@ -160,6 +250,8 @@ struct ContentView: View {
             value: showHelp
         )
 
+        // MARK: - Sidebar Toggle Notification
+
         .onReceive(
             NotificationCenter
                 .default
@@ -172,9 +264,13 @@ struct ContentView: View {
             withAnimation(
                 .easeInOut(duration: 0.22)
             ) {
-                isSidebarCollapsed.toggle()
+
+                isSidebarCollapsed
+                    .toggle()
             }
         }
+
+        // MARK: - Transcript Listener
 
         .onReceive(
             controller
@@ -187,6 +283,8 @@ struct ContentView: View {
             )
         }
 
+        // MARK: - Escape
+
         .onExitCommand {
 
             if showSettings {
@@ -197,7 +295,9 @@ struct ContentView: View {
                         dampingFraction: 0.9
                     )
                 ) {
-                    showSettings = false
+
+                    showSettings =
+                        false
                 }
 
             } else if showHelp {
@@ -208,45 +308,15 @@ struct ContentView: View {
                         dampingFraction: 0.9
                     )
                 ) {
-                    showHelp = false
+
+                    showHelp =
+                        false
                 }
             }
         }
     }
 
-    private var settingsBackdrop:
-        some View {
-
-        ZStack {
-
-            Color.black
-                .opacity(0.13)
-
-            Color(
-                red: 0.82,
-                green: 0.75,
-                blue: 0.64
-            )
-            .opacity(0.05)
-        }
-        .ignoresSafeArea()
-        .contentShape(
-            Rectangle()
-        )
-        .onTapGesture {
-
-            withAnimation(
-                .spring(
-                    response: 0.28,
-                    dampingFraction: 0.9
-                )
-            ) {
-                showSettings = false
-            }
-        }
-        .transition(.opacity)
-        .zIndex(1)
-    }
+    // MARK: - Help Backdrop
 
     private var helpBackdrop:
         some View {
@@ -275,12 +345,18 @@ struct ContentView: View {
                     dampingFraction: 0.9
                 )
             ) {
-                showHelp = false
+
+                showHelp =
+                    false
             }
         }
-        .transition(.opacity)
+        .transition(
+            .opacity
+        )
         .zIndex(1)
     }
+
+    // MARK: - Content Area
 
     @ViewBuilder
     private var contentArea:
@@ -300,9 +376,11 @@ struct ContentView: View {
             NotetakerView()
 
         case .insights:
+
             InsightsView()
 
         case .analytics:
+
             AnalyticsView()
 
         case .dictionary:
@@ -339,17 +417,11 @@ struct ContentView: View {
 
         case .settings:
 
-            DictationDashboardView(
-                history: history,
-                onDelete: deleteDictation
-            )
+            EmptyView()
 
         case .help:
 
-            DictationDashboardView(
-                history: history,
-                onDelete: deleteDictation
-            )
+            EmptyView()
         }
     }
 
@@ -368,11 +440,15 @@ struct ContentView: View {
                 remoteDictations.map { dictation in
 
                     DictationEntry(
-                        remoteID: dictation.id,
-                        time: displayTime(
-                            from: dictation.createdAt
-                        ),
-                        text: dictation.text
+                        remoteID:
+                            dictation.id,
+                        time:
+                            displayTime(
+                                from:
+                                    dictation.createdAt
+                            ),
+                        text:
+                            dictation.text
                     )
                 }
 
@@ -422,8 +498,11 @@ struct ContentView: View {
                     )
 
                 withAnimation(
-                    .easeInOut(duration: 0.2)
+                    .easeInOut(
+                        duration: 0.2
+                    )
                 ) {
+
                     history.removeAll {
                         $0.id == entry.id
                     }
@@ -460,7 +539,8 @@ struct ContentView: View {
         let cleaned =
             transcript
                 .trimmingCharacters(
-                    in: .whitespacesAndNewlines
+                    in:
+                        .whitespacesAndNewlines
                 )
 
         guard !cleaned.isEmpty else {
@@ -485,6 +565,7 @@ struct ContentView: View {
             cleaned
 
         // Temporary local row
+
         let localEntry =
             DictationEntry(
                 time:
@@ -501,6 +582,7 @@ struct ContentView: View {
         )
 
         // Save to backend
+
         Task {
 
             do {
@@ -509,17 +591,23 @@ struct ContentView: View {
                     try await DictationService
                         .shared
                         .saveDictation(
-                            text: cleaned
+                            text:
+                                cleaned
                         )
 
                 let savedEntry =
                     DictationEntry(
-                        id: localEntry.id,
-                        remoteID: saved.id,
-                        time: displayTime(
-                            from: saved.createdAt
-                        ),
-                        text: saved.text
+                        id:
+                            localEntry.id,
+                        remoteID:
+                            saved.id,
+                        time:
+                            displayTime(
+                                from:
+                                    saved.createdAt
+                            ),
+                        text:
+                            saved.text
                     )
 
                 if let index =
@@ -598,4 +686,6 @@ struct ContentView: View {
             )
             .lowercased()
     }
+    
+    
 }

@@ -1,4 +1,3 @@
-import Foundation
 import AppKit
 
 extension Notification.Name {
@@ -11,6 +10,16 @@ extension Notification.Name {
     static let flowVoiceSidebarStateChanged =
         Notification.Name(
             "flowVoiceSidebarStateChanged"
+        )
+    
+    static let flowVoiceSettingsStateChanged =
+        Notification.Name(
+            "flowVoiceSettingsStateChanged"
+        )
+
+    static let flowVoiceAppearanceChanged =
+        Notification.Name(
+            "flowVoiceAppearanceChanged"
         )
 }
 
