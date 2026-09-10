@@ -16,11 +16,8 @@ struct SidebarRow: View {
         ) {
 
             if isCollapsed {
-
                 collapsedRow
-
             } else {
-
                 expandedRow
             }
         }
@@ -81,6 +78,13 @@ struct SidebarRow: View {
         .foregroundStyle(
             FlowVoiceTheme.primaryText
         )
+        .opacity(
+            isSelected
+                ? 1.0
+                : isHovering
+                    ? 0.82
+                    : 0.46
+        )
         .padding(
             .horizontal,
             11
@@ -89,8 +93,7 @@ struct SidebarRow: View {
             height: 38
         )
         .background {
-
-            rowBackground
+            expandedBackground
         }
         .contentShape(
             Rectangle()
@@ -122,6 +125,13 @@ struct SidebarRow: View {
             .foregroundStyle(
                 FlowVoiceTheme.primaryText
             )
+            .opacity(
+                isSelected
+                    ? 1.0
+                    : isHovering
+                        ? 0.82
+                        : 0.46
+            )
             .frame(
                 width: 42,
                 height: 42
@@ -135,57 +145,19 @@ struct SidebarRow: View {
             maxWidth: .infinity
         )
         .background {
-
-            if isSelected {
-
-                RoundedRectangle(
-                    cornerRadius: 11,
-                    style: .continuous
-                )
-                .fill(
-                    FlowVoiceTheme.selectedSurface
-                )
-                .frame(
-                    width: 42,
-                    height: 42
-                )
-
-            } else if isHovering {
-
-                RoundedRectangle(
-                    cornerRadius: 11,
-                    style: .continuous
-                )
-                .fill(
-                    FlowVoiceTheme.hoverSurface
-                )
-                .frame(
-                    width: 42,
-                    height: 42
-                )
-            }
+            collapsedBackground
         }
         .contentShape(
             Rectangle()
         )
     }
 
-    // MARK: - Background
+    // MARK: - Expanded Background
 
     @ViewBuilder
-    private var rowBackground: some View {
+    private var expandedBackground: some View {
 
-        if isSelected {
-
-            RoundedRectangle(
-                cornerRadius: 10,
-                style: .continuous
-            )
-            .fill(
-                FlowVoiceTheme.selectedSurface
-            )
-
-        } else if isHovering {
+        if isHovering && !isSelected {
 
             RoundedRectangle(
                 cornerRadius: 10,
@@ -193,6 +165,27 @@ struct SidebarRow: View {
             )
             .fill(
                 FlowVoiceTheme.hoverSurface
+            )
+        }
+    }
+
+    // MARK: - Collapsed Background
+
+    @ViewBuilder
+    private var collapsedBackground: some View {
+
+        if isHovering && !isSelected {
+
+            RoundedRectangle(
+                cornerRadius: 11,
+                style: .continuous
+            )
+            .fill(
+                FlowVoiceTheme.hoverSurface
+            )
+            .frame(
+                width: 42,
+                height: 42
             )
         }
     }

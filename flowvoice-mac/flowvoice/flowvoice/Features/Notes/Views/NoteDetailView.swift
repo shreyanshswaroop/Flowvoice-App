@@ -2,1382 +2,590 @@ import SwiftUI
 import AppKit
 
 struct NoteDetailView: View {
-
     let note: Note
-
     let onClose: () -> Void
+    let onNoteUpdated: (Note) -> Void
+    let onNoteDeleted: (Note) -> Void
 
-    let onNoteUpdated:
-        (Note) -> Void
+    private enum DetailTab: String, CaseIterable {
+        case thoughts = "My thoughts"
+        case transcript = "Transcript"
+        case summary = "Summary"
+    }
 
     @State private var currentNote: Note
-
-    @State private var didCopy = false
-
+    @State private var selectedTab: DetailTab = .transcript
     @State private var isGeneratingSummary = false
-
     @State private var summaryError: String?
+    @State private var didCopy = false
+    @State private var isSearching = false
+    @State private var searchText = ""
+    @State private var showDeleteConfirmation = false
+    @State private var isDeleting = false
+    @State private var deleteError: String?
+    @State private var showNoteMenu = false
+    @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var searchFocused: Bool
+    @AppStorage private var thoughts: String
 
-    init(
-        note: Note,
-        onClose: @escaping () -> Void,
-        onNoteUpdated:
-            @escaping (Note) -> Void
-    ) {
-
+    init(note: Note, onClose: @escaping () -> Void, onNoteUpdated: @escaping (Note) -> Void, onNoteDeleted: @escaping (Note) -> Void) {
         self.note = note
-
         self.onClose = onClose
-
-        self.onNoteUpdated =
-            onNoteUpdated
-
-        _currentNote =
-            State(
-                initialValue: note
-            )
+        self.onNoteUpdated = onNoteUpdated
+        self.onNoteDeleted = onNoteDeleted
+        _currentNote = State(initialValue: note)
+        _thoughts = AppStorage(wrappedValue: "", "noteThoughts.\(note.id)")
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            toolbar
 
-        ZStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+                    tabs
+                    Rectangle()
+                        .fill(FlowVoiceTheme.divider)
+                        .frame(height: 1)
 
-            FlowVoiceTheme.windowBackground
-                .opacity(0.72)
-                .ignoresSafeArea()
-                .onTapGesture {
+                    Group {
+                        switch selectedTab {
+                        case .thoughts:
+                            thoughtsEditor
+                        case .transcript:
+                            transcriptSection
+                        case .summary:
+                            summarySection
+                        }
+                    }
+                    .padding(.top, 28)
+                    .padding(.bottom, 32)
+                }
+                .frame(maxWidth: 800, alignment: .leading)
+                .padding(.horizontal, 32)
+                .frame(maxWidth: .infinity)
+            }
 
+            bottomBar
+        }
+        .foregroundStyle(FlowVoiceTheme.primaryText)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(FlowVoiceTheme.elevatedSurface)
+        .overlayPreferenceValue(NoteMenuAnchorKey.self) { anchor in
+            if showNoteMenu, let anchor {
+                GeometryReader { geometry in
+                    let button = geometry[anchor]
+                    let menuWidth = min(220, geometry.size.width - 32)
+                    ZStack(alignment: .topLeading) {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { showNoteMenu = false }
+                        noteMenu
+                            .frame(width: menuWidth)
+                            .offset(x: max(16, button.maxX - menuWidth), y: button.maxY + 6)
+                    }
+                }
+            }
+        }
+        .alert("Delete this note?", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete note", role: .destructive) { deleteNote() }
+        } message: {
+            Text("This permanently deletes the note. It cannot be restored from trash.")
+        }
+        .alert("Could not delete note", isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Button("OK", role: .cancel) { deleteError = nil }
+        } message: {
+            Text(deleteError ?? "")
+        }
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 12) {
+            Button {
+                if showNoteMenu {
+                    showNoteMenu = false
+                } else {
                     onClose()
                 }
-
-            VStack(
-                alignment: .leading,
-                spacing: 20
-            ) {
-
-                header
-
-                Divider()
-                    .overlay(
-                        FlowVoiceTheme.divider
-                    )
-
-                ScrollView {
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: 24
-                    ) {
-
-                        summaryArea
-
-                        transcriptSection
-                    }
-                    .frame(
-                        maxWidth: .infinity,
-                        alignment: .leading
-                    )
-                }
-
-                bottomBar
+            } label: {
+                Image(systemName: "chevron.left")
+                    .frame(width: 36, height: 36)
+                    .background(FlowVoiceTheme.selectedSurface, in: RoundedRectangle(cornerRadius: 8))
             }
-            .padding(26)
-            .frame(
-                width: 680,
-                height: 620
-            )
-            .background(
-                RoundedRectangle(
-                    cornerRadius: 24,
-                    style: .continuous
-                )
-                .fill(
-                    FlowVoiceTheme.elevatedSurface
-                )
-            )
-            .shadow(
-                color:
-                    .black.opacity(0.15),
-                radius: 30,
-                x: 0,
-                y: 16
-            )
-        }
-    }
-
-    // MARK: - Header
-
-    private var header:
-        some View {
-
-        HStack {
-
-            VStack(
-                alignment: .leading,
-                spacing: 5
-            ) {
-
-                Text(
-                    currentNote.title
-                )
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 28
-                    )
-                    .weight(.semibold)
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.primaryText
-                )
-
-                HStack(
-                    spacing: 10
-                ) {
-
-                    if let duration =
-                        currentNote
-                            .durationSeconds {
-
-                        Label(
-                            formattedDuration(
-                                duration
-                            ),
-                            systemImage:
-                                "clock"
-                        )
-                    }
-
-                    Text(
-                        formattedDate(
-                            currentNote
-                                .createdAt
-                        )
-                    )
-
-                    if !currentNote
-                        .segments
-                        .isEmpty {
-
-                        HStack(
-                            spacing: 4
-                        ) {
-
-                            Image(
-                                systemName:
-                                    "person.2"
-                            )
-
-                            Text(
-                                "\(speakerCount) speakers"
-                            )
-                        }
-                    }
-                }
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 11
-                    )
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.secondaryText
-                )
-            }
+            .keyboardShortcut(.cancelAction)
+            .help("Back to notes")
+            .accessibilityLabel("Back to notes")
 
             Spacer()
 
             Button {
-
-                onClose()
-
+                showNoteMenu.toggle()
             } label: {
-
-                Image(
-                    systemName:
-                        "xmark"
-                )
-                .font(
-                    .system(
-                        size: 12,
-                        weight: .semibold
-                    )
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.tertiaryText
-                )
-                .frame(
-                    width: 30,
-                    height: 30
-                )
-                .background(
-                    Circle()
-                        .fill(
-                            FlowVoiceTheme.selectedSurface
-                        )
-                )
+                Image(systemName: "ellipsis")
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .anchorPreference(key: NoteMenuAnchorKey.self, value: .bounds) { $0 }
+            .help("Note actions")
+            .accessibilityLabel("Note actions")
+
+            ShareLink(item: "\(currentNote.title)\n\n\(selectedTabText)") {
+                Label("Share", systemImage: "square.and.arrow.up")
+                    .padding(.horizontal, 14)
+                    .frame(height: 36)
+                    .background(FlowVoiceTheme.selectedSurface, in: RoundedRectangle(cornerRadius: 8))
+            }
+            .help("Share note text")
         }
+        .buttonStyle(NoteActionButtonStyle())
+        .font(.system(size: 15, weight: .medium))
+        .padding(.horizontal, 28)
+        .padding(.vertical, 20)
     }
 
-    // MARK: - Speaker Count
+    private var noteMenu: some View {
+        VStack(spacing: 0) {
+            Button {
+                copy(completeNoteText)
+                showNoteMenu = false
+            } label: {
+                noteMenuLabel("Copy notes", icon: "doc.on.doc", color: FlowVoiceTheme.primaryText)
+            }
+            Button {} label: {
+                noteMenuLabel("Send notes via email", icon: "envelope", color: FlowVoiceTheme.mutedText)
+            }
+            .disabled(true)
 
-    private var speakerCount:
-        Int {
+            Rectangle()
+                .fill(FlowVoiceTheme.hairline)
+                .frame(height: 1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 5)
 
-        Set(
-            currentNote
-                .segments
-                .map {
-                    $0.speaker
-                }
-        )
-        .count
+            Button(role: .destructive) {
+                showNoteMenu = false
+                showDeleteConfirmation = true
+            } label: {
+                noteMenuLabel("Move to trash", icon: "trash", color: Color(red: 0.82, green: 0.24, blue: 0.13))
+            }
+            .disabled(isDeleting || isGeneratingSummary)
+            .opacity(isDeleting || isGeneratingSummary ? 0.45 : 1)
+        }
+        .buttonStyle(NoteMenuButtonStyle())
+        .padding(6)
+        .background(colorScheme == .dark ? Color(nsColor: .windowBackgroundColor) : .white,
+                    in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(FlowVoiceTheme.hairline, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 8)
     }
 
-    // MARK: - Summary Area
+    private func noteMenuLabel(_ title: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .frame(width: 16)
+            Text(title)
+                .font(.system(size: 13))
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 9)
+        .frame(height: 30)
+        .contentShape(Rectangle())
+    }
 
-    @ViewBuilder
-    private var summaryArea:
-        some View {
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(currentNote.title.isEmpty ? "New note" : currentNote.title)
+                .font(.system(size: 36, weight: .regular, design: .serif))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
 
-        if hasGeneratedSummary {
+            Text(formattedDate)
+                .font(.system(size: 15))
+                .foregroundStyle(FlowVoiceTheme.secondaryText)
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 22)
+    }
 
-            VStack(
-                alignment: .leading,
-                spacing: 14
-            ) {
-
-                HStack {
-
-                    HStack(
-                        spacing: 6
-                    ) {
-
-                        Image(
-                            systemName:
-                                "sparkles"
-                        )
-
-                        Text(
-                            "AI INSIGHTS"
-                        )
-                    }
-                    .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 9
-                        )
-                        .weight(.semibold)
-                    )
-                    .tracking(1.4)
-                    .foregroundStyle(
-                        Color.purple.opacity(
-                            0.7
-                        )
-                    )
-
-                    Spacer()
-
-                    Button {
-
-                        generateSummary()
-
-                    } label: {
-
-                        HStack(
-                            spacing: 5
-                        ) {
-
-                            if isGeneratingSummary {
-
-                                ProgressView()
-                                    .controlSize(
-                                        .mini
-                                    )
-
-                            } else {
-
-                                Image(
-                                    systemName:
-                                        "arrow.clockwise"
-                                )
-
-                                Text(
-                                    "Regenerate"
-                                )
+    private var tabs: some View {
+        HStack(spacing: 26) {
+            ForEach(DetailTab.allCases, id: \.self) { tab in
+                Button {
+                    selectedTab = tab
+                } label: {
+                    VStack(spacing: 14) {
+                        HStack(spacing: 6) {
+                            if tab == .summary {
+                                Image(systemName: "sparkle")
                             }
+                            Text(tab.rawValue)
                         }
-                        .font(
-                            .custom(
-                                "Avenir Next",
-                                size: 10
-                            )
-                            .weight(.medium)
-                        )
-                        .foregroundStyle(
-                            FlowVoiceTheme.tertiaryText
-                        )
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(selectedTab == tab ? FlowVoiceTheme.primaryText : FlowVoiceTheme.secondaryText)
+
+                        Rectangle()
+                            .fill(selectedTab == tab ? FlowVoiceTheme.primaryText : .clear)
+                            .frame(height: 2)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(
-                        isGeneratingSummary
-                    )
+                    .fixedSize(horizontal: true, vertical: false)
+                    .contentShape(Rectangle())
                 }
-
-                insightCard {
-
-                    summarySection
-                }
-
-                if !currentNote
-                    .keyPoints
-                    .isEmpty {
-
-                    insightCard {
-
-                        keyPointsSection
-                    }
-                }
-
-                if !currentNote
-                    .actionItems
-                    .isEmpty {
-
-                    insightCard {
-
-                        actionItemsSection
-                    }
-                }
-
-                if let summaryError {
-
-                    Text(
-                        summaryError
-                    )
-                    .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 11
-                        )
-                    )
-                    .foregroundStyle(
-                        .red
-                    )
-                }
-            }
-
-        } else {
-
-            generateSummaryCard
-        }
-    }
-
-    private func insightCard<
-        Content: View
-    >(
-        @ViewBuilder content:
-            () -> Content
-    ) -> some View {
-
-        content()
-            .frame(
-                maxWidth: .infinity,
-                alignment: .leading
-            )
-            .padding(16)
-            .background(
-                RoundedRectangle(
-                    cornerRadius: 15,
-                    style: .continuous
-                )
-                .fill(
-                    FlowVoiceTheme.inputSurface.opacity(
-                        0.62
-                    )
-                )
-            )
-            .overlay(
-                RoundedRectangle(
-                    cornerRadius: 15,
-                    style: .continuous
-                )
-                .stroke(
-                    FlowVoiceTheme.hairline,
-                    lineWidth: 1
-                )
-            )
-    }
-
-    private var hasGeneratedSummary:
-        Bool {
-
-        guard let summary =
-            currentNote
-                .summary?
-                .trimmingCharacters(
-                    in:
-                        .whitespacesAndNewlines
-                )
-        else {
-            return false
-        }
-
-        return !summary.isEmpty
-    }
-
-    private var generateSummaryCard:
-        some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 14
-        ) {
-
-            HStack(
-                alignment: .top,
-                spacing: 12
-            ) {
-
-                Image(
-                    systemName:
-                        "sparkles"
-                )
-                .font(
-                    .system(
-                        size: 17,
-                        weight: .medium
-                    )
-                )
-                .foregroundStyle(
-                    Color.purple.opacity(
-                        0.8
-                    )
-                )
-                .frame(
-                    width: 38,
-                    height: 38
-                )
-                .background(
-                    Circle()
-                        .fill(
-                            Color.purple.opacity(
-                                0.08
-                            )
-                        )
-                )
-
-                VStack(
-                    alignment: .leading,
-                    spacing: 5
-                ) {
-
-                    Text(
-                        "Generate meeting insights"
-                    )
-                    .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 15
-                        )
-                        .weight(.semibold)
-                    )
-                    .foregroundStyle(
-                        FlowVoiceTheme.primaryText
-                    )
-
-                    Text(
-                        "Create a concise summary, key points, and action items from this conversation."
-                    )
-                    .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 11
-                        )
-                    )
-                    .foregroundStyle(
-                        FlowVoiceTheme.secondaryText
-                    )
-                    .fixedSize(
-                        horizontal: false,
-                        vertical: true
-                    )
-                }
-
-                Spacer()
-            }
-
-            if let summaryError {
-
-                Text(
-                    summaryError
-                )
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 11
-                    )
-                )
-                .foregroundStyle(
-                    .red
-                )
-            }
-
-            Button {
-
-                generateSummary()
-
-            } label: {
-
-                HStack(
-                    spacing: 8
-                ) {
-
-                    if isGeneratingSummary {
-
-                        ProgressView()
-                            .controlSize(
-                                .small
-                            )
-
-                    } else {
-
-                        Image(
-                            systemName:
-                                "sparkles"
-                        )
-
-                        Text(
-                            "Generate Summary"
-                        )
-                    }
-                }
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 12
-                    )
-                    .weight(.semibold)
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.accentButtonText
-                )
-                .padding(
-                    .horizontal,
-                    14
-                )
-                .frame(
-                    height: 38
-                )
-                .background(
-                    FlowVoiceTheme.accentButton,
-                    in:
-                        RoundedRectangle(
-                            cornerRadius: 10,
-                            style:
-                                .continuous
-                        )
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(
-                isGeneratingSummary
-            )
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(
-                cornerRadius: 16,
-                style: .continuous
-            )
-            .fill(
-                FlowVoiceTheme.surface
-            )
-        )
-        .overlay(
-            RoundedRectangle(
-                cornerRadius: 16,
-                style: .continuous
-            )
-            .stroke(
-                FlowVoiceTheme.hairline,
-                lineWidth: 1
-            )
-        )
-    }
-
-    // MARK: - Summary
-
-    private var summarySection:
-        some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 9
-        ) {
-
-            sectionHeader(
-                title: "SUMMARY",
-                icon: "sparkles"
-            )
-
-            Text(
-                currentNote.summary ?? ""
-            )
-            .font(
-                .custom(
-                    "Avenir Next",
-                    size: 13
-                )
-            )
-            .foregroundStyle(
-                FlowVoiceTheme.primaryText
-            )
-            .lineSpacing(4)
-            .textSelection(
-                .enabled
-            )
-        }
-    }
-
-    // MARK: - Key Points
-
-    private var keyPointsSection:
-        some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 10
-        ) {
-
-            sectionHeader(
-                title: "KEY POINTS",
-                icon: "list.bullet"
-            )
-
-            VStack(
-                alignment: .leading,
-                spacing: 9
-            ) {
-
-                ForEach(
-                    Array(
-                        currentNote
-                            .keyPoints
-                            .enumerated()
-                    ),
-                    id: \.offset
-                ) { _, point in
-
-                    HStack(
-                        alignment: .top,
-                        spacing: 9
-                    ) {
-
-                        Circle()
-                            .fill(
-                                FlowVoiceTheme.tertiaryText
-                            )
-                            .frame(
-                                width: 4,
-                                height: 4
-                            )
-                            .padding(
-                                .top,
-                                7
-                            )
-
-                        Text(
-                            point
-                        )
-                        .font(
-                            .custom(
-                                "Avenir Next",
-                                size: 12
-                            )
-                        )
-                        .foregroundStyle(
-                            FlowVoiceTheme.secondaryText
-                        )
-                        .lineSpacing(3)
-                    }
-                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
             }
         }
     }
 
-    // MARK: - Action Items
-
-    private var actionItemsSection:
-        some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 10
-        ) {
-
-            sectionHeader(
-                title: "ACTION ITEMS",
-                icon:
-                    "checkmark.circle"
-            )
-
-            VStack(
-                alignment: .leading,
-                spacing: 9
-            ) {
-
-                ForEach(
-                    Array(
-                        currentNote
-                            .actionItems
-                            .enumerated()
-                    ),
-                    id: \.offset
-                ) { _, action in
-
-                    HStack(
-                        alignment: .top,
-                        spacing: 9
-                    ) {
-
-                        Image(
-                            systemName:
-                                "circle"
-                        )
-                        .font(
-                            .system(
-                                size: 11,
-                                weight:
-                                    .regular
-                            )
-                        )
-                        .foregroundStyle(
-                            FlowVoiceTheme.tertiaryText
-                        )
-                        .padding(
-                            .top,
-                            2
-                        )
-
-                        Text(
-                            action
-                        )
-                        .font(
-                            .custom(
-                                "Avenir Next",
-                                size: 12
-                            )
-                        )
-                        .foregroundStyle(
-                            FlowVoiceTheme.secondaryText
-                        )
-                        .lineSpacing(3)
-                    }
-                }
-            }
-        }
+    private var thoughtsEditor: some View {
+        TextEditor(text: $thoughts)
+            .font(.system(size: 16))
+            .scrollContentBackground(.hidden)
+            .padding(12)
+            .frame(minHeight: 300)
+            .background(FlowVoiceTheme.hoverSurface, in: RoundedRectangle(cornerRadius: 8))
+            .accessibilityLabel("My thoughts")
     }
 
-    // MARK: - Transcript
-
-    private var transcriptSection:
-        some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 14
-        ) {
-
-            HStack {
-
-                sectionHeader(
-                    title:
-                        "FULL TRANSCRIPT",
-                    icon:
-                        "text.alignleft"
-                )
-
-                Spacer()
-
-                if !currentNote
-                    .segments
-                    .isEmpty {
-
-                    HStack(
-                        spacing: 5
-                    ) {
-
-                        Image(
-                            systemName:
-                                "person.2.fill"
-                        )
-
-                        Text(
-                            "DIARIZED"
-                        )
+    private var transcriptSection: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    Label(formattedTimestamp(Double(currentNote.durationSeconds ?? 0)), systemImage: "clock")
+                        .monospacedDigit()
+                    Spacer()
+                    Button {
+                        isSearching.toggle()
+                        if isSearching {
+                            searchFocused = true
+                        } else {
+                            searchText = ""
+                        }
+                    } label: {
+                        Image(systemName: isSearching ? "xmark" : "magnifyingglass")
+                            .frame(width: 30, height: 30)
                     }
-                    .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 8
-                        )
-                        .weight(.semibold)
-                    )
-                    .tracking(1)
-                    .foregroundStyle(
-                        Color.purple.opacity(
-                            0.65
-                        )
-                    )
+                    .help(isSearching ? "Close search" : "Search transcript")
+                    .accessibilityLabel(isSearching ? "Close search" : "Search transcript")
+
+                    Button { copy(transcriptText) } label: {
+                        Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                            .frame(width: 30, height: 30)
+                    }
+                    .help(didCopy ? "Copied" : "Copy transcript")
+                    .accessibilityLabel(didCopy ? "Copied" : "Copy transcript")
+                }
+                .buttonStyle(NoteActionButtonStyle())
+                .font(.system(size: 14))
+                .foregroundStyle(FlowVoiceTheme.secondaryText)
+                .padding(12)
+
+                if isSearching {
+                    TextField("Search transcript", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($searchFocused)
+                        .padding([.horizontal, .bottom], 12)
                 }
             }
+            .background(FlowVoiceTheme.hoverSurface, in: RoundedRectangle(cornerRadius: 8))
 
-            if currentNote
-                .segments
-                .isEmpty {
-
-                plainTranscript
-
+            if currentNote.segments.isEmpty {
+                if matchesSearch(currentNote.transcript) {
+                    transcriptBubble(currentNote.transcript.isEmpty ? "No transcript" : currentNote.transcript)
+                } else {
+                    noSearchResults
+                }
+            } else if filteredSegments.isEmpty {
+                noSearchResults
             } else {
-
-                diarizedTranscript
-            }
-        }
-    }
-
-    // MARK: - Old Note Fallback
-
-    private var plainTranscript:
-        some View {
-
-        Text(
-            currentNote.transcript
-        )
-        .font(
-            .custom(
-                "Avenir Next",
-                size: 13
-            )
-        )
-        .foregroundStyle(
-            FlowVoiceTheme.primaryText
-        )
-        .lineSpacing(5)
-        .frame(
-            maxWidth: .infinity,
-            alignment: .topLeading
-        )
-        .textSelection(
-            .enabled
-        )
-    }
-
-    // MARK: - Diarized Transcript
-
-    private var diarizedTranscript:
-        some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 18
-        ) {
-
-            ForEach(
-                currentNote.segments
-            ) { segment in
-
-                savedSpeakerRow(
-                    segment
-                )
-            }
-        }
-    }
-
-    // MARK: - Saved Speaker Row
-
-    private func savedSpeakerRow(
-        _ segment:
-            NoteSpeakerSegment
-    ) -> some View {
-
-        HStack(
-            alignment: .top,
-            spacing: 12
-        ) {
-
-            ZStack {
-
-                Circle()
-                    .fill(
-                        speakerColor(
-                            segment.speaker
-                        )
-                        .opacity(
-                            0.12
-                        )
-                    )
-                    .frame(
-                        width: 32,
-                        height: 32
-                    )
-
-                Text(
-                    "\(segment.speaker + 1)"
-                )
-                .font(
-                    .system(
-                        size: 11,
-                        weight: .semibold
-                    )
-                )
-                .foregroundStyle(
-                    speakerColor(
-                        segment.speaker
-                    )
-                )
-            }
-
-            VStack(
-                alignment: .leading,
-                spacing: 5
-            ) {
-
-                HStack(
-                    spacing: 8
-                ) {
-
-                    Text(
-                        "Speaker \(segment.speaker + 1)"
-                    )
-                    .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 10
-                        )
-                        .weight(.semibold)
-                    )
-                    .foregroundStyle(
-                        speakerColor(
-                            segment.speaker
-                        )
-                    )
-
-                    if let start =
-                        segment.start {
-
-                        Text(
-                            formattedTimestamp(
-                                start
-                            )
-                        )
-                        .font(
-                            .system(
-                                size: 9,
-                                weight:
-                                    .regular,
-                                design:
-                                    .monospaced
-                            )
-                        )
-                        .foregroundStyle(
-                            FlowVoiceTheme.mutedText
-                        )
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(filteredSegments.enumerated()), id: \.element.id) { index, segment in
+                        let startsSpeaker = index == 0 || filteredSegments[index - 1].speaker != segment.speaker
+                        if startsSpeaker {
+                            HStack(spacing: 10) {
+                                Text("Speaker \(segment.speaker + 1)")
+                                    .font(.system(size: 14, weight: .medium))
+                                if let start = segment.start {
+                                    Text(formattedTimestamp(start))
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(FlowVoiceTheme.tertiaryText)
+                                }
+                            }
+                            .padding(.top, index == 0 ? 0 : 18)
+                            .padding(.bottom, 3)
+                        }
+                        transcriptBubble(segment.text)
                     }
                 }
-
-                Text(
-                    segment.text
-                )
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 13
-                    )
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.primaryText
-                )
-                .lineSpacing(5)
-                .textSelection(
-                    .enabled
-                )
             }
 
-            Spacer(
-                minLength: 0
-            )
-        }
-        .padding(
-            .vertical,
-            4
-        )
-    }
-
-    // MARK: - Speaker Color
-
-    private func speakerColor(
-        _ speaker: Int
-    ) -> Color {
-
-        switch speaker % 6 {
-
-        case 0:
-            return .blue
-
-        case 1:
-            return .orange
-
-        case 2:
-            return .green
-
-        case 3:
-            return .purple
-
-        case 4:
-            return .pink
-
-        default:
-            return .teal
-        }
-    }
-
-    // MARK: - Timestamp
-
-    private func formattedTimestamp(
-        _ seconds: Double
-    ) -> String {
-
-        let totalSeconds =
-            max(
-                0,
-                Int(seconds)
-            )
-
-        let minutes =
-            totalSeconds / 60
-
-        let remainingSeconds =
-            totalSeconds % 60
-
-        return String(
-            format:
-                "%d:%02d",
-            minutes,
-            remainingSeconds
-        )
-    }
-
-    // MARK: - Section Header
-
-    private func sectionHeader(
-        title: String,
-        icon: String
-    ) -> some View {
-
-        HStack(
-            spacing: 7
-        ) {
-
-            Image(
-                systemName:
-                    icon
-            )
-            .font(
-                .system(
-                    size: 11,
-                    weight: .medium
-                )
-            )
-
-            Text(
-                title
-            )
-            .font(
-                .custom(
-                    "Avenir Next",
-                    size: 9
-                )
-                .weight(.semibold)
-            )
-            .tracking(1.5)
-        }
-        .foregroundStyle(
-            FlowVoiceTheme.mutedText
-        )
-    }
-
-    // MARK: - Bottom Bar
-
-    private var bottomBar:
-        some View {
-
-        HStack {
-
-            if !currentNote
-                .segments
-                .isEmpty {
-
-                Text(
-                    "\(currentNote.segments.count) transcript segments"
-                )
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 10
-                    )
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.mutedText
-                )
+            HStack(spacing: 12) {
+                Rectangle().fill(FlowVoiceTheme.divider).frame(height: 1)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10))
+                    .foregroundStyle(FlowVoiceTheme.tertiaryText)
+                Rectangle().fill(FlowVoiceTheme.divider).frame(height: 1)
             }
+            .accessibilityLabel("End of transcript")
+            .padding(.top, 8)
+        }
+    }
 
-            Spacer()
+    private func transcriptBubble(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 16))
+            .lineSpacing(5)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(FlowVoiceTheme.hoverSurface, in: RoundedRectangle(cornerRadius: 8))
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var noSearchResults: some View {
+        Text("No matching transcript")
+            .foregroundStyle(FlowVoiceTheme.secondaryText)
+            .padding(.vertical, 24)
+    }
+
+    private var summarySection: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            if hasGeneratedSummary {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Summary").font(.system(size: 20, weight: .semibold))
+                    Text(currentNote.summary ?? "")
+                        .font(.system(size: 16))
+                        .lineSpacing(6)
+                        .textSelection(.enabled)
+                }
+                if !currentNote.keyPoints.isEmpty {
+                    summaryList("Key points", items: currentNote.keyPoints, icon: "smallcircle.filled.circle")
+                }
+                if !currentNote.actionItems.isEmpty {
+                    summaryList("Action items", items: currentNote.actionItems, icon: "circle")
+                }
+            } else {
+                Text(isGeneratingSummary ? "Generating summary..." : "No summary yet")
+                    .font(.system(size: 16))
+                    .foregroundStyle(FlowVoiceTheme.secondaryText)
+                    .padding(.vertical, 24)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func summaryList(_ title: String, items: [String], icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title).font(.system(size: 18, weight: .semibold))
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: icon)
+                        .font(.system(size: 10))
+                        .foregroundStyle(FlowVoiceTheme.tertiaryText)
+                        .frame(width: 12, height: 22)
+                    Text(item)
+                        .font(.system(size: 15))
+                        .lineSpacing(5)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+    }
+
+    private var bottomBar: some View {
+        VStack(spacing: 10) {
+            if let summaryError {
+                Text(summaryError)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+            }
 
             Button {
-
-                copyTranscript()
-
-            } label: {
-
-                HStack(
-                    spacing: 7
-                ) {
-
-                    Image(
-                        systemName:
-                            didCopy
-                            ? "checkmark"
-                            : "doc.on.doc"
-                    )
-
-                    Text(
-                        didCopy
-                        ? "Copied"
-                        : "Copy transcript"
-                    )
+                if hasGeneratedSummary && selectedTab != .summary {
+                    selectedTab = .summary
+                } else {
+                    generateSummary()
                 }
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 12
-                    )
-                    .weight(.semibold)
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.accentButtonText
-                )
-                .padding(
-                    .horizontal,
-                    14
-                )
-                .frame(
-                    height: 38
-                )
-                .background(
-                    FlowVoiceTheme.accentButton,
-                    in:
-                        RoundedRectangle(
-                            cornerRadius: 10,
-                            style:
-                                .continuous
-                        )
-                )
+            } label: {
+                HStack(spacing: 10) {
+                    if isGeneratingSummary {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "sparkle")
+                    }
+                    Text(isGeneratingSummary ? "Generating summary..." : summaryButtonTitle)
+                }
+                .font(.system(size: 15, weight: .medium))
+                .padding(.horizontal, 24)
+                .frame(height: 46)
+                .foregroundStyle(FlowVoiceTheme.accentButtonText)
+                .background(FlowVoiceTheme.accentButton, in: Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(NoteActionButtonStyle(prominent: true, cornerRadius: 100))
+            .disabled(isGeneratingSummary || transcriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 24)
+    }
+
+    private var summaryButtonTitle: String {
+        hasGeneratedSummary ? (selectedTab == .summary ? "Regenerate summary" : "View summary") : "Generate summary"
+    }
+
+    private var hasGeneratedSummary: Bool {
+        !(currentNote.summary?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    }
+
+    private var filteredSegments: [NoteSpeakerSegment] {
+        currentNote.segments.filter { matchesSearch($0.text) }
+    }
+
+    private func matchesSearch(_ text: String) -> Bool {
+        searchText.isEmpty || text.localizedStandardContains(searchText)
+    }
+
+    private var transcriptText: String {
+        guard !currentNote.segments.isEmpty else { return currentNote.transcript }
+        return currentNote.segments.map { segment in
+            let timestamp = segment.start.map { " [\(formattedTimestamp($0))]" } ?? ""
+            return "Speaker \(segment.speaker + 1)\(timestamp)\n\(segment.text)"
+        }.joined(separator: "\n\n")
+    }
+
+    private var summaryText: String {
+        var sections = [currentNote.summary ?? ""]
+        if !currentNote.keyPoints.isEmpty {
+            sections.append("Key points\n" + currentNote.keyPoints.map { "- \($0)" }.joined(separator: "\n"))
+        }
+        if !currentNote.actionItems.isEmpty {
+            sections.append("Action items\n" + currentNote.actionItems.map { "- \($0)" }.joined(separator: "\n"))
+        }
+        return sections.joined(separator: "\n\n")
+    }
+
+    private var selectedTabText: String {
+        switch selectedTab {
+        case .thoughts: return thoughts
+        case .transcript: return transcriptText
+        case .summary: return summaryText
         }
     }
 
-    // MARK: - Generate Summary
+    private var completeNoteText: String {
+        var sections = [currentNote.title]
+        if !thoughts.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            sections.append("My thoughts\n\(thoughts)")
+        }
+        if hasGeneratedSummary {
+            sections.append("Summary\n\(summaryText)")
+        }
+        sections.append("Transcript\n\(transcriptText)")
+        return sections.joined(separator: "\n\n")
+    }
+
+    private func deleteNote() {
+        guard !isDeleting && !isGeneratingSummary else { return }
+        isDeleting = true
+        Task { @MainActor in
+            defer { isDeleting = false }
+            do {
+                try await NoteService.shared.deleteNote(id: currentNote.id)
+                UserDefaults.standard.removeObject(forKey: "noteThoughts.\(currentNote.id)")
+                onNoteDeleted(currentNote)
+                onClose()
+            } catch {
+                deleteError = "Please try again. Your note has not been removed from this view."
+            }
+        }
+    }
 
     private func generateSummary() {
-
-        guard
-            !isGeneratingSummary
-        else {
-            return
-        }
-
-        isGeneratingSummary =
-            true
-
-        summaryError =
-            nil
-
-        Task {
-
+        guard !isGeneratingSummary && !isDeleting else { return }
+        isGeneratingSummary = true
+        summaryError = nil
+        Task { @MainActor in
+            defer { isGeneratingSummary = false }
             do {
-
-                let summarizedNote =
-                    try await NoteService
-                        .shared
-                        .summarizeNote(
-                            id:
-                                currentNote.id
-                        )
-
-                withAnimation(
-                    .easeInOut(
-                        duration: 0.2
-                    )
-                ) {
-
-                    currentNote =
-                        summarizedNote
-                }
-
-                // Keep NotetakerView's
-                // notes array synchronized.
-                onNoteUpdated(
-                    summarizedNote
-                )
-
-                print(
-                    "Summary generated for note:",
-                    currentNote.id
-                )
-
+                let updated = try await NoteService.shared.summarizeNote(id: currentNote.id)
+                currentNote = updated
+                selectedTab = .summary
+                onNoteUpdated(updated)
             } catch {
-
-                summaryError =
-                    "Could not generate summary."
-
-                print(
-                    "Could not generate summary:",
-                    error
-                )
+                summaryError = "Could not generate summary. Please try again."
             }
-
-            isGeneratingSummary =
-                false
         }
     }
 
-    // MARK: - Copy
-
-    private func copyTranscript() {
-
-        let pasteboard =
-            NSPasteboard.general
-
-        pasteboard.clearContents()
-
-        let textToCopy:
-            String
-
-        if currentNote
-            .segments
-            .isEmpty {
-
-            textToCopy =
-                currentNote.transcript
-
-        } else {
-
-            textToCopy =
-                currentNote
-                    .segments
-                    .map { segment in
-
-                        let timestamp:
-                            String
-
-                        if let start =
-                            segment.start {
-
-                            timestamp =
-                                " [\(formattedTimestamp(start))]"
-
-                        } else {
-
-                            timestamp =
-                                ""
-                        }
-
-                        return """
-                        Speaker \(segment.speaker + 1)\(timestamp)
-                        \(segment.text)
-                        """
-                    }
-                    .joined(
-                        separator:
-                            "\n\n"
-                    )
+    private func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        didCopy = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            didCopy = false
         }
-
-        pasteboard.setString(
-            textToCopy,
-            forType: .string
-        )
-
-        didCopy =
-            true
-
-        DispatchQueue.main
-            .asyncAfter(
-                deadline:
-                    .now() + 1.2
-            ) {
-
-                didCopy =
-                    false
-            }
     }
 
-    // MARK: - Duration
-
-    private func formattedDuration(
-        _ seconds: Int
-    ) -> String {
-
-        let minutes =
-            seconds / 60
-
-        let remainingSeconds =
-            seconds % 60
-
-        return String(
-            format:
-                "%d:%02d",
-            minutes,
-            remainingSeconds
-        )
+    private func formattedTimestamp(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds))
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
-    // MARK: - Date
-
-    private func formattedDate(
-        _ isoDate: String
-    ) -> String {
-
-        let formatter =
-            ISO8601DateFormatter()
-
-        formatter.formatOptions = [
-            .withInternetDateTime,
-            .withFractionalSeconds
-        ]
-
-        guard let date =
-            formatter.date(
-                from: isoDate
-            )
-        else {
-            return ""
+    private var formattedDate: String {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var date = parser.date(from: currentNote.createdAt)
+        if date == nil {
+            parser.formatOptions = [.withInternetDateTime]
+            date = parser.date(from: currentNote.createdAt)
         }
+        guard let date else { return currentNote.createdAt }
+        let output = DateFormatter()
+        output.timeStyle = .short
+        if Calendar.current.isDateInToday(date) {
+            return "\(output.string(from: date)) today"
+        }
+        output.dateStyle = .medium
+        return output.string(from: date)
+    }
+}
 
-        let output =
-            DateFormatter()
+struct NoteMenuAnchorKey: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
 
-        output.dateStyle =
-            .medium
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
+    }
+}
 
-        output.timeStyle =
-            .short
+struct NoteMenuButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        MenuRow(configuration: configuration)
+    }
 
-        return output.string(
-            from: date
-        )
+    private struct MenuRow: View {
+        let configuration: ButtonStyle.Configuration
+        @State private var isHovered = false
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .background(isEnabled && (isHovered || configuration.isPressed)
+                            ? FlowVoiceTheme.hoverSurface : .clear,
+                            in: RoundedRectangle(cornerRadius: 6))
+                .onHover { isHovered = $0 }
+        }
     }
 }

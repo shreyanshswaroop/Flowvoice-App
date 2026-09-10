@@ -34,9 +34,6 @@ from app.insights.routes import (
     router as insights_router,
 )
 
-from app.analytics.routes import (
-    router as analytics_router,
-)
 from app.dictionary.routes import (
     router as dictionary_router,
 )
@@ -95,10 +92,6 @@ app.include_router(
 
 app.include_router(
     insights_router
-)
-
-app.include_router(
-    analytics_router
 )
 
 app.include_router(

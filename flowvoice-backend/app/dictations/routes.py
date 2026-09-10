@@ -68,6 +68,7 @@ async def create_dictation(
         "word_count": len(
             cleaned_text.split()
         ),
+        "duration_seconds": payload.duration_seconds,
         "created_at": created_at,
     }
 
@@ -79,6 +80,7 @@ async def create_dictation(
         "id": str(result.inserted_id),
         "text": cleaned_text,
         "word_count": document["word_count"],
+        "duration_seconds": document["duration_seconds"],
         "created_at": serialize_datetime(
             created_at
         ),
@@ -121,6 +123,9 @@ async def get_dictations(
                     len(
                         item["text"].split()
                     ),
+                ),
+                "duration_seconds": item.get(
+                    "duration_seconds"
                 ),
                 "created_at":
                     serialize_datetime(

@@ -1,1050 +1,888 @@
 import SwiftUI
 
 struct InsightsView: View {
-
-    @State private var insights:
-        InsightsResponse?
-
-    @State private var isLoading =
-        false
-
-    @State private var isGenerating =
-        false
-
-    @State private var errorMessage:
-        String?
-
-    private let pageBackground =
-        FlowVoiceTheme.pageBackground
+    @State private var insights: InsightsResponse?
+    @State private var selectedTab = InsightTab.usage
+    @State private var isLoading = false
+    @State private var isGenerating = false
+    @State private var errorMessage: String?
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            headerSection
+            tabBar
 
-        ScrollView {
+            if isLoading && insights == nil {
+                loadingView
+            } else {
+                if let errorMessage {
+                    errorCard(message: errorMessage)
+                }
 
-            VStack(
-                alignment: .leading,
-                spacing: 28
-            ) {
-
-                headerSection
-
-                if isLoading &&
-                    insights == nil {
-
-                    loadingView
-
-                } else {
-
-                    overviewGrid
-
-                    if let errorMessage {
-
-                        errorCard(
-                            message:
-                                errorMessage
-                        )
-                    }
-
-                    contentGrid
+                switch selectedTab {
+                case .usage:
+                    usageDashboard
+                case .notetaker:
+                    notetakerDashboard
                 }
             }
-            .padding(
-                .horizontal,
-                34
-            )
-            .padding(
-                .top,
-                30
-            )
-            .padding(
-                .bottom,
-                50
-            )
         }
-        .scrollIndicators(
-            .hidden
-        )
-        .background(
-            pageBackground
-        )
+        .padding(.horizontal, 42)
+        .padding(.top, 32)
+        .padding(.bottom, 30)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(FlowVoiceTheme.pageBackground)
         .task {
-
             await loadInsights()
         }
     }
 
-    // MARK: - Header
-
-    private var headerSection:
-        some View {
-
-        HStack(
-            alignment: .top
-        ) {
-
-            VStack(
-                alignment: .leading,
-                spacing: 8
-            ) {
-
-                Text("Insights")
-                    .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 38
-                        )
-                        .weight(.semibold)
-                    )
-                    .foregroundStyle(
-                        FlowVoiceTheme.primaryText
-                    )
-
-                Text(
-                    "Turn your conversations into patterns, decisions, and next steps."
-                )
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 14
-                    )
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.secondaryText
-                )
-            }
+    private var headerSection: some View {
+        HStack(alignment: .top) {
+            Text("Insights")
+                .font(.system(size: 36, weight: .regular, design: .serif))
+                .foregroundStyle(FlowVoiceTheme.primaryText)
 
             Spacer()
 
             Button {
-
                 generateInsights()
-
             } label: {
+                ZStack {
+                    Circle()
+                        .fill(FlowVoiceTheme.surface)
+                        .overlay {
+                            Circle()
+                                .stroke(FlowVoiceTheme.hairline, lineWidth: 1)
+                        }
+                        .frame(width: 52, height: 52)
 
-                HStack(
-                    spacing: 7
-                ) {
+                    Circle()
+                        .strokeBorder(
+                            FlowVoiceTheme.primaryText.opacity(0.34),
+                            style: StrokeStyle(lineWidth: 2, dash: [5, 5])
+                        )
+                        .frame(width: 42, height: 42)
 
                     if isGenerating {
-
                         ProgressView()
-                            .controlSize(
-                                .small
-                            )
-
+                            .controlSize(.small)
                     } else {
-
-                        Image(
-                            systemName:
-                                "sparkles"
-                        )
-
-                        Text(
-                            hasGeneratedInsights
-                            ? "Refresh"
-                            : "Generate"
-                        )
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(FlowVoiceTheme.primaryText)
                     }
                 }
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 12
-                    )
-                    .weight(.semibold)
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.accentButtonText
-                )
-                .padding(
-                    .horizontal,
-                    14
-                )
-                .frame(
-                    height: 38
-                )
-                .background(
-                    FlowVoiceTheme.accentButton,
-                    in:
-                        RoundedRectangle(
-                            cornerRadius: 10,
-                            style:
-                                .continuous
-                        )
-                )
             }
             .buttonStyle(.plain)
-            .disabled(
-                isGenerating
-            )
+            .disabled(isGenerating)
+            .help(hasGeneratedInsights ? "Refresh insights" : "Generate insights")
         }
     }
 
-    // MARK: - Has Generated Insights
+    private var tabBar: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 28) {
+                ForEach(InsightTab.allCases) { tab in
+                    Button {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            selectedTab = tab
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 11) {
+                            Text(tab.title)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(selectedTab == tab ? FlowVoiceTheme.primaryText : FlowVoiceTheme.secondaryText)
 
-    private var hasGeneratedInsights:
-        Bool {
+                            Rectangle()
+                                .fill(selectedTab == tab ? FlowVoiceTheme.primaryText : Color.clear)
+                                .frame(width: tab.indicatorWidth, height: 2)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                }
+            }
 
+            Rectangle()
+                .fill(FlowVoiceTheme.divider)
+                .frame(height: 1)
+        }
+    }
+
+    private var usageDashboard: some View {
+        GeometryReader { geometry in
+            let topHeight: CGFloat = 168
+            let lowerHeight = max(220, geometry.size.height - topHeight - 18)
+
+            VStack(spacing: 18) {
+                HStack(spacing: 18) {
+                    wordsPerMinuteCard
+                        .frame(maxWidth: .infinity, minHeight: topHeight, maxHeight: topHeight)
+
+                    timeSavedCard
+                        .frame(maxWidth: .infinity, minHeight: topHeight, maxHeight: topHeight)
+
+                    totalWordsCard
+                        .frame(maxWidth: .infinity, minHeight: topHeight, maxHeight: topHeight)
+                }
+                .frame(height: topHeight)
+
+                HStack(alignment: .top, spacing: 18) {
+                    whereYouDictateCard
+                        .frame(maxWidth: .infinity)
+
+                    usageStreakCard
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(height: lowerHeight)
+            }
+        }
+    }
+
+    private var notetakerDashboard: some View {
+        GeometryReader { geometry in
+            let topHeight: CGFloat = 168
+            let lowerHeight = max(230, geometry.size.height - topHeight - 18)
+
+            VStack(spacing: 18) {
+                HStack(spacing: 18) {
+                    notetakerMetricCard(
+                        value: "\(totalMeetings)",
+                        label: "TOTAL MEETINGS",
+                        detail: "Captured in FlowVoice"
+                    )
+                    .frame(maxWidth: .infinity, minHeight: topHeight, maxHeight: topHeight)
+
+                    notetakerMetricCard(
+                        value: meetingTime,
+                        label: "MEETING TIME",
+                        detail: "Recorded so far"
+                    )
+                    .frame(maxWidth: .infinity, minHeight: topHeight, maxHeight: topHeight)
+
+                    notetakerMetricCard(
+                        value: "\(actionItemCount)",
+                        label: "ACTION ITEMS",
+                        detail: "Found across meetings"
+                    )
+                    .frame(maxWidth: .infinity, minHeight: topHeight, maxHeight: topHeight)
+                }
+                .frame(height: topHeight)
+
+                HStack(alignment: .top, spacing: 18) {
+                    meetingActivityCard
+                        .frame(maxWidth: .infinity)
+
+                    VStack(spacing: 18) {
+                        taskStatusCard
+                        meetingIntelligenceCard
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .frame(height: lowerHeight)
+            }
+        }
+    }
+
+    private var wordsPerMinuteCard: some View {
+        metricShell {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("\(estimatedWPM)")
+                    .font(.system(size: 30, weight: .regular, design: .serif))
+                    .foregroundStyle(FlowVoiceTheme.primaryText)
+
+                Text("WORDS PER MINUTE")
+                    .metricLabel()
+
+                ZStack(alignment: .bottom) {
+                    ArcShape()
+                        .stroke(FlowVoiceTheme.selectedSurface, style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                        .frame(height: 62)
+
+                    ArcShape(progress: min(max(Double(estimatedWPM) / 200, 0.08), 1))
+                        .stroke(FlowVoiceTheme.primaryText.opacity(0.72), style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                        .frame(height: 62)
+
+                    VStack(spacing: 2) {
+                        Text("Top")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(FlowVoiceTheme.tertiaryText)
+
+                        Text("\(wpmRank)%")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(FlowVoiceTheme.primaryText)
+                    }
+                    .padding(.bottom, 2)
+                }
+                .padding(.top, 3)
+            }
+        }
+    }
+
+    private var timeSavedCard: some View {
+        metricShell {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(timeSaved)
+                    .font(.system(size: 30, weight: .regular, design: .serif))
+                    .foregroundStyle(FlowVoiceTheme.primaryText)
+
+                Text("TIME SAVED")
+                    .metricLabel()
+
+                Rectangle()
+                    .fill(FlowVoiceTheme.divider)
+                    .frame(height: 1)
+
+                Text("Compared with typing")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(FlowVoiceTheme.primaryText)
+            }
+        }
+    }
+
+    private var totalWordsCard: some View {
+        metricShell {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("\(totalWordCount)")
+                    .font(.system(size: 30, weight: .regular, design: .serif))
+                    .foregroundStyle(FlowVoiceTheme.primaryText)
+
+                Text("TOTAL WORDS DICTATED")
+                    .metricLabel()
+
+                Rectangle()
+                    .fill(FlowVoiceTheme.divider)
+                    .frame(height: 1)
+
+                HStack(spacing: 10) {
+                    Image(systemName: "desktopcomputer")
+                        .font(.system(size: 16, weight: .medium))
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Desktop")
+                            .font(.system(size: 15, weight: .medium))
+
+                        Text("\(totalWordCount) words")
+                            .font(.system(size: 13))
+                            .foregroundStyle(FlowVoiceTheme.secondaryText)
+                    }
+
+                    Spacer()
+                }
+                .foregroundStyle(FlowVoiceTheme.primaryText)
+            }
+        }
+    }
+
+    private var whereYouDictateCard: some View {
+        insightPanel {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Where you dictate")
+                        .font(.system(size: 25, weight: .regular, design: .serif))
+                        .foregroundStyle(FlowVoiceTheme.primaryText)
+
+                    Spacer()
+
+                    Text("TOTAL PLACES | \(usageRows.count)")
+                        .metricLabel()
+                }
+
+                Spacer(minLength: 0)
+
+                VStack(spacing: 14) {
+                    ForEach(usageRows) { row in
+                        usageRow(row)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var usageStreakCard: some View {
+        insightPanel {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("\(usageStreakDays) day streak")
+                        .font(.system(size: 25, weight: .regular, design: .serif))
+                        .foregroundStyle(FlowVoiceTheme.primaryText)
+
+                    Spacer()
+
+                    Text("USAGE STREAK")
+                        .metricLabel()
+                }
+
+                HStack {
+                    Image(systemName: "chevron.left")
+                        .foregroundStyle(FlowVoiceTheme.mutedText)
+
+                    Spacer()
+
+                    ForEach(["May", "Jun", "Jul", "Aug", "Sep"], id: \.self) { month in
+                        Text(month)
+                            .font(.system(size: 12))
+                            .foregroundStyle(FlowVoiceTheme.tertiaryText)
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(FlowVoiceTheme.mutedText)
+                }
+
+                Spacer(minLength: 0)
+
+                streakGrid
+
+                HStack(spacing: 8) {
+                    Text("More")
+                        .font(.system(size: 12))
+                        .foregroundStyle(FlowVoiceTheme.secondaryText)
+
+                    ForEach(0..<4, id: \.self) { index in
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(streakTone(index))
+                            .frame(width: 18, height: 18)
+                    }
+
+                    Text("Less")
+                        .font(.system(size: 12))
+                        .foregroundStyle(FlowVoiceTheme.secondaryText)
+
+                    Spacer()
+
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .stroke(FlowVoiceTheme.primaryText.opacity(0.65), lineWidth: 1)
+                        .frame(width: 22, height: 22)
+
+                    Text("Current streak")
+                        .font(.system(size: 12))
+                        .foregroundStyle(FlowVoiceTheme.secondaryText)
+                }
+            }
+        }
+    }
+
+    private var meetingActivityCard: some View {
+        insightPanel {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Meeting activity")
+                        .font(.system(size: 25, weight: .regular, design: .serif))
+                        .foregroundStyle(FlowVoiceTheme.primaryText)
+
+                    Spacer()
+
+                    Text("LAST 5 MONTHS")
+                        .metricLabel()
+                }
+
+                Spacer(minLength: 0)
+
+                meetingActivityGrid
+
+                Text("Activity is based on captured meetings in this workspace.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(FlowVoiceTheme.secondaryText)
+            }
+        }
+    }
+
+    private var taskStatusCard: some View {
+        insightPanel(minHeight: 116) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Tasks")
+                    .font(.system(size: 20, weight: .regular, design: .serif))
+                    .foregroundStyle(FlowVoiceTheme.primaryText)
+
+                HStack(spacing: 12) {
+                    taskPill(title: "Completed", value: completedTasks)
+                    taskPill(title: "Open", value: openTasks)
+                    taskPill(title: "Overdue", value: overdueTasks)
+                }
+            }
+        }
+    }
+
+    private var meetingIntelligenceCard: some View {
+        insightPanel(minHeight: 126) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Meeting intelligence")
+                        .font(.system(size: 20, weight: .regular, design: .serif))
+                        .foregroundStyle(FlowVoiceTheme.primaryText)
+
+                    Spacer()
+
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(FlowVoiceTheme.tertiaryText)
+                }
+
+                Text(meetingIntelligenceText)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(FlowVoiceTheme.secondaryText)
+                    .lineSpacing(3)
+                    .lineLimit(3)
+            }
+        }
+    }
+
+    private func notetakerMetricCard(value: String, label: String, detail: String) -> some View {
+        metricShell {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(value)
+                    .font(.system(size: 30, weight: .regular, design: .serif))
+                    .foregroundStyle(FlowVoiceTheme.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+
+                Text(label)
+                    .metricLabel()
+
+                Rectangle()
+                    .fill(FlowVoiceTheme.divider)
+                    .frame(height: 1)
+
+                Text(detail)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(FlowVoiceTheme.primaryText)
+            }
+        }
+    }
+
+    private func usageRow(_ row: UsageRow) -> some View {
+            HStack(spacing: 12) {
+            Image(systemName: row.icon)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(FlowVoiceTheme.primaryText)
+                .frame(width: 24)
+
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(FlowVoiceTheme.selectedSurface)
+
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(row.isPrimary ? FlowVoiceTheme.primaryText.opacity(0.78) : FlowVoiceTheme.primaryText.opacity(0.38))
+                        .frame(width: max(44, geometry.size.width * row.percent))
+
+                    Text("\(Int(row.percent * 100))%")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(row.isPrimary ? FlowVoiceTheme.accentButtonText : FlowVoiceTheme.primaryText)
+                        .padding(.leading, 18)
+                }
+            }
+            .frame(height: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.label)
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(1.1)
+                    .foregroundStyle(FlowVoiceTheme.primaryText)
+                    .lineLimit(1)
+
+                if !row.detail.isEmpty {
+                    Text(row.detail)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(FlowVoiceTheme.tertiaryText)
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: 150, alignment: .leading)
+        }
+    }
+
+    private var streakGrid: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], id: \.self) { day in
+                    Text(day)
+                        .font(.system(size: 10))
+                        .foregroundStyle(FlowVoiceTheme.tertiaryText)
+                        .frame(height: 11)
+                }
+            }
+
+            LazyHGrid(rows: Array(repeating: GridItem(.fixed(11), spacing: 6), count: 7), spacing: 6) {
+                ForEach(0..<56, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(activityCellColor(index, days: insights?.usage.activityDays ?? []))
+                        .overlay {
+                            if index == 54 || index == 55 {
+                                RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                                    .stroke(FlowVoiceTheme.primaryText.opacity(0.7), lineWidth: 1)
+                            }
+                        }
+                        .frame(width: 11, height: 11)
+                }
+            }
+        }
+    }
+
+    private var meetingActivityGrid: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], id: \.self) { day in
+                    Text(day)
+                        .font(.system(size: 10))
+                        .foregroundStyle(FlowVoiceTheme.tertiaryText)
+                        .frame(height: 11)
+                }
+            }
+
+            LazyHGrid(rows: Array(repeating: GridItem(.fixed(11), spacing: 6), count: 7), spacing: 6) {
+                ForEach(0..<56, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(activityCellColor(index, days: insights?.notetaker.meetingActivity ?? []))
+                        .frame(width: 11, height: 11)
+                }
+            }
+        }
+    }
+
+    private func taskPill(title: String, value: Int) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("\(value)")
+                .font(.system(size: 23, weight: .regular, design: .serif))
+                .foregroundStyle(FlowVoiceTheme.primaryText)
+
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(FlowVoiceTheme.secondaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(FlowVoiceTheme.selectedSurface.opacity(0.65))
+        }
+    }
+
+    private func metricShell<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(18)
+            .background {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(FlowVoiceTheme.surface)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(FlowVoiceTheme.hairline, lineWidth: 1)
+                    }
+            }
+    }
+
+    private func insightPanel<Content: View>(
+        minHeight: CGFloat = 240,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
+            .padding(20)
+            .background {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(FlowVoiceTheme.surface)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(FlowVoiceTheme.hairline, lineWidth: 1)
+                    }
+            }
+    }
+
+    private var loadingView: some View {
+        VStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.regular)
+
+            Text("Loading insights...")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(FlowVoiceTheme.tertiaryText)
+        }
+        .frame(maxWidth: .infinity, minHeight: 360)
+    }
+
+    private func errorCard(message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(Color.orange.opacity(0.85))
+
+            Text(message)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(FlowVoiceTheme.secondaryText)
+
+            Spacer()
+
+            Button("Try Again") {
+                generateInsights()
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var hasGeneratedInsights: Bool {
         guard let insights else {
             return false
         }
 
-        if insights.generatedAt != nil {
-            return true
-        }
-
-        if insights.notesCount > 0 {
-            return true
-        }
-
-        return false
+        return insights.generatedAt != nil || insights.notesCount > 0
     }
 
-    // MARK: - Overview
-
-    private var overviewGrid:
-        some View {
-
-        LazyVGrid(
-            columns: [
-                GridItem(
-                    .flexible(),
-                    spacing: 14
-                ),
-                GridItem(
-                    .flexible(),
-                    spacing: 14
-                ),
-                GridItem(
-                    .flexible(),
-                    spacing: 14
-                ),
-                GridItem(
-                    .flexible(),
-                    spacing: 14
-                ),
-            ],
-            spacing: 14
-        ) {
-
-            metricCard(
-                title:
-                    "NOTES",
-                value:
-                    "\(insights?.notesCount ?? 0)",
-                icon:
-                    "note.text",
-                subtitle:
-                    "Analyzed"
-            )
-
-            metricCard(
-                title:
-                    "TOPICS",
-                value:
-                    "\(insights?.topicsCount ?? 0)",
-                icon:
-                    "tag",
-                subtitle:
-                    "Recurring"
-            )
-
-            metricCard(
-                title:
-                    "ACTIONS",
-                value:
-                    "\(insights?.actionsCount ?? 0)",
-                icon:
-                    "checkmark.circle",
-                subtitle:
-                    "Detected"
-            )
-
-            metricCard(
-                title:
-                    "DECISIONS",
-                value:
-                    "\(insights?.decisionsCount ?? 0)",
-                icon:
-                    "point.3.connected.trianglepath.dotted",
-                subtitle:
-                    "Identified"
-            )
-        }
+    private var totalWordCount: Int {
+        insights?.usage.totalWordsDictated ?? 0
     }
 
-    // MARK: - Metric Card
-
-    private func metricCard(
-        title: String,
-        value: String,
-        icon: String,
-        subtitle: String
-    ) -> some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 14
-        ) {
-
-            HStack {
-
-                Image(
-                    systemName:
-                        icon
-                )
-                .font(
-                    .system(
-                        size: 14,
-                        weight: .medium
-                    )
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.tertiaryText
-                )
-                .frame(
-                    width: 34,
-                    height: 34
-                )
-                .background(
-                    RoundedRectangle(
-                        cornerRadius: 10,
-                        style: .continuous
-                    )
-                    .fill(
-                        FlowVoiceTheme.selectedSurface
-                    )
-                )
-
-                Spacer()
-            }
-
-            VStack(
-                alignment: .leading,
-                spacing: 3
-            ) {
-
-                Text(value)
-                    .font(
-                        .system(
-                            size: 28,
-                            weight: .semibold,
-                            design: .rounded
-                        )
-                    )
-                    .foregroundStyle(
-                        FlowVoiceTheme.primaryText
-                    )
-
-                Text(title)
-                    .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 9
-                        )
-                        .weight(.semibold)
-                    )
-                    .tracking(1.3)
-                    .foregroundStyle(
-                        FlowVoiceTheme.mutedText
-                    )
-
-                Text(subtitle)
-                    .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 10
-                        )
-                    )
-                    .foregroundStyle(
-                        FlowVoiceTheme.tertiaryText
-                    )
-            }
-        }
-        .padding(18)
-        .background(
-            RoundedRectangle(
-                cornerRadius: 20,
-                style: .continuous
-            )
-            .fill(
-                FlowVoiceTheme.surface
-            )
-        )
-        .overlay(
-            RoundedRectangle(
-                cornerRadius: 20,
-                style: .continuous
-            )
-            .stroke(
-                FlowVoiceTheme.hairline,
-                lineWidth: 1
-            )
-        )
+    private var estimatedWPM: Int {
+        insights?.usage.wordsPerMinute ?? 0
     }
 
-    // MARK: - Main Content
+    private var wpmRank: Int {
+        guard estimatedWPM > 0 else {
+            return 0
+        }
 
-    private var contentGrid:
-        some View {
+        return max(1, min(99, 100 - Int(Double(estimatedWPM) / 180 * 100)))
+    }
 
-        LazyVGrid(
-            columns: [
-                GridItem(
-                    .flexible(),
-                    spacing: 16
-                ),
-                GridItem(
-                    .flexible(),
-                    spacing: 16
-                ),
-            ],
-            spacing: 16
-        ) {
+    private var timeSaved: String {
+        let saved = insights?.usage.timeSavedSeconds ?? 0
 
-            themesCard
+        if saved < 60 {
+            return "\(saved)s"
+        }
 
-            aiInsightCard
+        let minutes = saved / 60
+        let hours = minutes / 60
 
-            decisionsCard
+        if hours == 0 {
+            return "\(minutes)m"
+        }
 
-            actionItemsCard
+        return "\(hours)h \(minutes % 60)m"
+    }
+
+    private var usageStreakDays: Int {
+        insights?.usage.usageStreakDays ?? 0
+    }
+
+    private var totalMeetings: Int {
+        insights?.notetaker.totalMeetings ?? 0
+    }
+
+    private var meetingTime: String {
+        let seconds = insights?.notetaker.meetingTimeSeconds ?? 0
+        let minutes = seconds / 60
+
+        if minutes < 60 {
+            return "\(minutes)m"
+        }
+
+        return "\(minutes / 60)h \(minutes % 60)m"
+    }
+
+    private var actionItemCount: Int {
+        insights?.notetaker.actionItems ?? 0
+    }
+
+    private var completedTasks: Int {
+        insights?.notetaker.completedTasks ?? 0
+    }
+
+    private var openTasks: Int {
+        insights?.notetaker.openTasks ?? 0
+    }
+
+    private var overdueTasks: Int {
+        insights?.notetaker.overdueTasks ?? 0
+    }
+
+    private var meetingIntelligenceText: String {
+        insights?.notetaker.meetingIntelligence
+            ?? "Start capturing meetings to see useful patterns about follow-ups, tasks, and meeting quality."
+    }
+
+    private var usageRows: [UsageRow] {
+        let places = insights?.usage.whereYouDictate ?? []
+
+        if places.isEmpty {
+            return [
+                UsageRow(icon: "desktopcomputer", percent: 0, label: "DESKTOP", detail: "0 words", isPrimary: true),
+            ]
+        }
+
+        return places.map { place in
+            UsageRow(
+                icon: place.label.lowercased() == "desktop" ? "desktopcomputer" : "mic",
+                percent: min(max(Double(place.percentage) / 100, 0), 1),
+                label: place.label.uppercased(),
+                detail: "\(place.words) words",
+                isPrimary: place.percentage == places.map(\.percentage).max()
+            )
         }
     }
 
-    // MARK: - Themes
+    private func activityCellColor(_ index: Int, days: [InsightsActivityDay]) -> Color {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let offset = index - 55
 
-    private var themesCard:
-        some View {
+        guard
+            let date = calendar.date(
+                byAdding: .day,
+                value: offset,
+                to: today
+            )
+        else {
+            return FlowVoiceTheme.selectedSurface.opacity(0.45)
+        }
 
-        insightContainer(
-            title:
-                "TOP THEMES",
-            icon:
-                "sparkles"
-        ) {
+        let key = Self.dayKeyFormatter.string(from: date)
+        let count = days.first(where: { $0.date == key })?.count ?? 0
 
-            let themes =
-                insights?.themes ?? []
+        if count <= 0 {
+            return FlowVoiceTheme.selectedSurface.opacity(0.45)
+        }
 
-            if themes.isEmpty {
+        if count >= 3 {
+            return FlowVoiceTheme.primaryText.opacity(0.38)
+        }
 
-                emptySection(
-                    text:
-                        "No recurring themes yet."
-                )
+        if count == 2 {
+            return FlowVoiceTheme.primaryText.opacity(0.24)
+        }
 
-            } else {
+        return FlowVoiceTheme.primaryText.opacity(0.14)
+    }
 
-                VStack(
-                    alignment: .leading,
-                    spacing: 10
-                ) {
-
-                    ForEach(
-                        themes,
-                        id: \.self
-                    ) { theme in
-
-                        HStack(
-                            spacing: 10
-                        ) {
-
-                            Circle()
-                                .fill(
-                                    Color.purple.opacity(
-                                        0.55
-                                    )
-                                )
-                                .frame(
-                                    width: 5,
-                                    height: 5
-                                )
-
-                            Text(
-                                theme
-                            )
-                            .font(
-                                .custom(
-                                    "Avenir Next",
-                                    size: 13
-                                )
-                                .weight(.medium)
-                            )
-                            .foregroundStyle(
-                                FlowVoiceTheme.secondaryText
-                            )
-                        }
-                    }
-                }
-            }
+    private func streakTone(_ index: Int) -> Color {
+        switch index {
+        case 0:
+            return FlowVoiceTheme.primaryText.opacity(0.70)
+        case 1:
+            return FlowVoiceTheme.primaryText.opacity(0.52)
+        case 2:
+            return FlowVoiceTheme.primaryText.opacity(0.34)
+        default:
+            return FlowVoiceTheme.primaryText.opacity(0.16)
         }
     }
 
-    // MARK: - AI Insight
-
-    private var aiInsightCard:
-        some View {
-
-        insightContainer(
-            title:
-                "AI INSIGHT",
-            icon:
-                "sparkles"
-        ) {
-
-            let text =
-                insights?
-                    .aiInsight
-                    .trimmingCharacters(
-                        in:
-                            .whitespacesAndNewlines
-                    )
-                ?? ""
-
-            if text.isEmpty {
-
-                emptySection(
-                    text:
-                        "Generate insights to discover patterns across your conversations."
-                )
-
-            } else {
-
-                VStack(
-                    alignment: .leading,
-                    spacing: 12
-                ) {
-
-                    Text(
-                        text
-                    )
-                    .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 15
-                        )
-                        .weight(.semibold)
-                    )
-                    .foregroundStyle(
-                        FlowVoiceTheme.primaryText
-                    )
-                    .lineSpacing(4)
-
-                    if let generatedAt =
-                        insights?
-                            .generatedAt {
-
-                        Text(
-                            "Updated \(formattedDate(generatedAt))"
-                        )
-                        .font(
-                            .custom(
-                                "Avenir Next",
-                                size: 10
-                            )
-                        )
-                        .foregroundStyle(
-                            FlowVoiceTheme.mutedText
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Decisions
-
-    private var decisionsCard:
-        some View {
-
-        insightContainer(
-            title:
-                "RECENT DECISIONS",
-            icon:
-                "arrow.triangle.branch"
-        ) {
-
-            let decisions =
-                insights?.decisions ?? []
-
-            if decisions.isEmpty {
-
-                emptySection(
-                    text:
-                        "No decisions detected yet."
-                )
-
-            } else {
-
-                VStack(
-                    alignment: .leading,
-                    spacing: 12
-                ) {
-
-                    ForEach(
-                        decisions,
-                        id: \.self
-                    ) { decision in
-
-                        HStack(
-                            alignment: .top,
-                            spacing: 9
-                        ) {
-
-                            Image(
-                                systemName:
-                                    "checkmark"
-                            )
-                            .font(
-                                .system(
-                                    size: 10,
-                                    weight: .semibold
-                                )
-                            )
-                            .foregroundStyle(
-                                Color.green.opacity(
-                                    0.75
-                                )
-                            )
-                            .padding(
-                                .top,
-                                3
-                            )
-
-                            Text(
-                                decision
-                            )
-                            .font(
-                                .custom(
-                                    "Avenir Next",
-                                    size: 12
-                                )
-                            )
-                            .foregroundStyle(
-                                FlowVoiceTheme.secondaryText
-                            )
-                            .lineSpacing(3)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Action Items
-
-    private var actionItemsCard:
-        some View {
-
-        insightContainer(
-            title:
-                "ACTION ITEMS",
-            icon:
-                "checklist"
-        ) {
-
-            let actionItems =
-                insights?
-                    .actionItems
-                ?? []
-
-            if actionItems.isEmpty {
-
-                emptySection(
-                    text:
-                        "No action items detected yet."
-                )
-
-            } else {
-
-                VStack(
-                    alignment: .leading,
-                    spacing: 12
-                ) {
-
-                    ForEach(
-                        actionItems,
-                        id: \.self
-                    ) { item in
-
-                        HStack(
-                            alignment: .top,
-                            spacing: 9
-                        ) {
-
-                            Image(
-                                systemName:
-                                    "circle"
-                            )
-                            .font(
-                                .system(
-                                    size: 10
-                                )
-                            )
-                            .foregroundStyle(
-                                FlowVoiceTheme.tertiaryText
-                            )
-                            .padding(
-                                .top,
-                                3
-                            )
-
-                            Text(
-                                item
-                            )
-                            .font(
-                                .custom(
-                                    "Avenir Next",
-                                    size: 12
-                                )
-                            )
-                            .foregroundStyle(
-                                FlowVoiceTheme.secondaryText
-                            )
-                            .lineSpacing(3)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Empty Section
-
-    private func emptySection(
-        text: String
-    ) -> some View {
-
-        Text(
-            text
-        )
-        .font(
-            .custom(
-                "Avenir Next",
-                size: 12
-            )
-        )
-        .foregroundStyle(
-            FlowVoiceTheme.tertiaryText
-        )
-        .lineSpacing(3)
-    }
-
-    // MARK: - Container
-
-    private func insightContainer<
-        Content: View
-    >(
-        title: String,
-        icon: String,
-        @ViewBuilder content:
-            () -> Content
-    ) -> some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 18
-        ) {
-
-            HStack(
-                spacing: 7
-            ) {
-
-                Image(
-                    systemName:
-                        icon
-                )
-                .font(
-                    .system(
-                        size: 11,
-                        weight: .medium
-                    )
-                )
-
-                Text(
-                    title
-                )
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 9
-                    )
-                    .weight(.semibold)
-                )
-                .tracking(1.4)
-            }
-            .foregroundStyle(
-                FlowVoiceTheme.mutedText
-            )
-
-            content()
-        }
-        .frame(
-            maxWidth: .infinity,
-            minHeight: 180,
-            alignment: .topLeading
-        )
-        .padding(20)
-        .background(
-            RoundedRectangle(
-                cornerRadius: 22,
-                style: .continuous
-            )
-            .fill(
-                FlowVoiceTheme.surface
-            )
-        )
-        .overlay(
-            RoundedRectangle(
-                cornerRadius: 22,
-                style: .continuous
-            )
-            .stroke(
-                FlowVoiceTheme.hairline,
-                lineWidth: 1
-            )
-        )
-        .shadow(
-            color:
-                .black.opacity(
-                    0.025
-                ),
-            radius: 12,
-            x: 0,
-            y: 6
-        )
-    }
-
-    // MARK: - Loading
-
-    private var loadingView:
-        some View {
-
-        VStack(
-            spacing: 12
-        ) {
-
-            ProgressView()
-                .controlSize(
-                    .regular
-                )
-
-            Text(
-                "Loading insights..."
-            )
-            .font(
-                .custom(
-                    "Avenir Next",
-                    size: 12
-                )
-            )
-            .foregroundStyle(
-                FlowVoiceTheme.tertiaryText
-            )
-        }
-        .frame(
-            maxWidth: .infinity,
-            minHeight: 300
-        )
-    }
-
-    // MARK: - Error
-
-    private func errorCard(
-        message: String
-    ) -> some View {
-
-        HStack(
-            spacing: 10
-        ) {
-
-            Image(
-                systemName:
-                    "exclamationmark.triangle"
-            )
-            .foregroundStyle(
-                Color.orange.opacity(
-                    0.8
-                )
-            )
-
-            Text(
-                message
-            )
-            .font(
-                .custom(
-                    "Avenir Next",
-                    size: 12
-                )
-            )
-            .foregroundStyle(
-                FlowVoiceTheme.secondaryText
-            )
-
-            Spacer()
-
-            Button(
-                "Try Again"
-            ) {
-
-                generateInsights()
-            }
-            .font(
-                .custom(
-                    "Avenir Next",
-                    size: 11
-                )
-                .weight(.semibold)
-            )
-            .buttonStyle(
-                .plain
-            )
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(
-                cornerRadius: 14,
-                style: .continuous
-            )
-            .fill(
-                Color.orange.opacity(
-                    0.06
-                )
-            )
-        )
-    }
-
-    // MARK: - Load Insights
-
-    private func loadInsights()
-        async {
-
-        isLoading =
-            true
-
-        errorMessage =
-            nil
+    private func loadInsights() async {
+        isLoading = true
+        errorMessage = nil
 
         defer {
-
-            isLoading =
-                false
+            isLoading = false
         }
 
         do {
-
-            let response =
-                try await InsightsService
-                    .shared
-                    .fetchInsights()
-
-            insights =
-                response
-
+            insights = try await InsightsService.shared.fetchInsights()
         } catch {
-
-            print(
-                "Could not load insights:",
-                error
-            )
-
-            errorMessage =
-                "Could not load your insights."
+            print("Could not load insights:", error)
+            errorMessage = "Could not load your insights."
         }
     }
 
-    // MARK: - Generate Insights
-
     private func generateInsights() {
-
-        guard
-            !isGenerating
-        else {
+        guard !isGenerating else {
             return
         }
 
-        isGenerating =
-            true
-
-        errorMessage =
-            nil
+        isGenerating = true
+        errorMessage = nil
 
         Task {
-
             do {
+                let generated = try await InsightsService.shared.generateInsights()
 
-                let generated =
-                    try await InsightsService
-                        .shared
-                        .generateInsights()
-
-                withAnimation(
-                    .easeInOut(
-                        duration: 0.22
-                    )
-                ) {
-
-                    insights =
-                        generated
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    insights = generated
                 }
 
-                print(
-                    "Insights generated"
-                )
-
+                print("Insights generated")
             } catch {
-
-                errorMessage =
-                    "Could not generate insights."
-
-                print(
-                    "Could not generate insights:",
-                    error
-                )
+                errorMessage = "Could not generate insights."
+                print("Could not generate insights:", error)
             }
 
-            isGenerating =
-                false
+            isGenerating = false
         }
     }
 
-    // MARK: - Date
+    private static let dayKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+}
 
-    private func formattedDate(
-        _ isoDate: String
-    ) -> String {
+private enum InsightTab: String, CaseIterable, Identifiable {
+    case usage
+    case notetaker
 
-        let formatter =
-            ISO8601DateFormatter()
+    var id: String {
+        rawValue
+    }
 
-        formatter.formatOptions = [
-            .withInternetDateTime,
-            .withFractionalSeconds
-        ]
-
-        guard let date =
-            formatter.date(
-                from:
-                    isoDate
-            )
-        else {
-
-            return ""
+    var title: String {
+        switch self {
+        case .usage:
+            return "Your usage"
+        case .notetaker:
+            return "Note Taker"
         }
+    }
 
-        let output =
-            DateFormatter()
+    var indicatorWidth: CGFloat {
+        switch self {
+        case .usage:
+            return 74
+        case .notetaker:
+            return 72
+        }
+    }
+}
 
-        output.dateStyle =
-            .medium
+private struct UsageRow: Identifiable {
+    let id = UUID()
+    let icon: String
+    let percent: Double
+    let label: String
+    var detail: String = ""
+    var isPrimary = false
+}
 
-        output.timeStyle =
-            .short
+private struct ArcShape: Shape {
+    var progress = 1.0
 
-        return output.string(
-            from:
-                date
-        )
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.maxY)
+        let radius = min(rect.width / 2, rect.height)
+        let start = Angle.degrees(180)
+        let end = Angle.degrees(180 + (180 * progress))
+
+        path.addArc(center: center, radius: radius, startAngle: start, endAngle: end, clockwise: false)
+        return path
+    }
+}
+
+private extension Text {
+    func metricLabel() -> some View {
+        self
+            .font(.system(size: 11, weight: .semibold))
+            .tracking(1.4)
+            .foregroundStyle(FlowVoiceTheme.secondaryText)
     }
 }

@@ -55,25 +55,21 @@ struct DictionaryView: View {
     @State private var errorMessage:
         String?
 
-    @State private var showEditor =
-        false
+    @State private var hoveredEntryID:
+        String?
 
-    @State private var editingEntry:
-        DictionaryEntry?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private let termAccent =
-        Color(
-            red: 0.620,
-            green: 0.520,
-            blue: 1.000
-        )
+    let presentEditor:
+        (DictionaryEntry?, @escaping (DictionaryEntry) -> Void) -> Void
 
-    private let replacementAccent =
-        Color(
-            red: 1.000,
-            green: 0.580,
-            blue: 0.320
-        )
+    init(
+        presentEditor: @escaping (DictionaryEntry?, @escaping (DictionaryEntry) -> Void) -> Void = { _, _ in }
+    ) {
+
+        self.presentEditor =
+            presentEditor
+    }
 
     var body: some View {
 
@@ -81,7 +77,7 @@ struct DictionaryView: View {
 
             VStack(
                 alignment: .leading,
-                spacing: 26
+                spacing: 22
             ) {
 
                 headerSection
@@ -103,11 +99,11 @@ struct DictionaryView: View {
             }
             .padding(
                 .horizontal,
-                34
+                42
             )
             .padding(
                 .top,
-                30
+                36
             )
             .padding(
                 .bottom,
@@ -123,21 +119,6 @@ struct DictionaryView: View {
         .task {
 
             await loadAll()
-        }
-        .sheet(
-            isPresented:
-                $showEditor
-        ) {
-
-            DictionaryEntryEditor(
-                entry:
-                    editingEntry
-            ) { saved in
-
-                handleSavedEntry(
-                    saved
-                )
-            }
         }
     }
 
@@ -157,11 +138,11 @@ struct DictionaryView: View {
 
                 Text("Dictionary")
                     .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 38
+                        .system(
+                            size: 36,
+                            weight: .regular,
+                            design: .serif
                         )
-                        .weight(.semibold)
                     )
                     .foregroundStyle(
                         FlowVoiceTheme.primaryText
@@ -171,9 +152,9 @@ struct DictionaryView: View {
                     "Teach FlowVoice the words, names, and replacements you use most."
                 )
                 .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 14
+                    .system(
+                        size: 13,
+                        weight: .regular
                     )
                 )
                 .foregroundStyle(
@@ -185,11 +166,14 @@ struct DictionaryView: View {
 
             Button {
 
-                editingEntry =
+                presentEditor(
                     nil
+                ) { saved in
 
-                showEditor =
-                    true
+                    handleSavedEntry(
+                        saved
+                    )
+                }
 
             } label: {
 
@@ -226,15 +210,14 @@ struct DictionaryView: View {
                 .background(
                     FlowVoiceTheme.accentButton,
                     in:
-                        RoundedRectangle(
-                            cornerRadius: 10,
-                            style:
-                                .continuous
-                        )
+                        Capsule()
                 )
             }
             .buttonStyle(
-                .plain
+                NoteActionButtonStyle(
+                    prominent: true,
+                    cornerRadius: 100
+                )
             )
         }
     }
@@ -259,7 +242,7 @@ struct DictionaryView: View {
                 )
             )
             .foregroundStyle(
-                termAccent.opacity(0.86)
+                FlowVoiceTheme.primaryText.opacity(0.72)
             )
             .frame(
                 width: 46,
@@ -272,7 +255,7 @@ struct DictionaryView: View {
                         .continuous
                 )
                 .fill(
-                    termAccent.opacity(0.16)
+                    FlowVoiceTheme.selectedSurface
                 )
             )
 
@@ -393,7 +376,7 @@ struct DictionaryView: View {
                             if selectedTab == tab {
 
                                 RoundedRectangle(
-                                    cornerRadius: 9,
+                                    cornerRadius: 12,
                                     style:
                                         .continuous
                                 )
@@ -461,7 +444,7 @@ struct DictionaryView: View {
             )
             .background(
                 RoundedRectangle(
-                    cornerRadius: 11,
+                    cornerRadius: 14,
                     style:
                         .continuous
                 )
@@ -519,7 +502,7 @@ struct DictionaryView: View {
                 )
                 .background(
                     RoundedRectangle(
-                        cornerRadius: 11,
+                        cornerRadius: 14,
                         style:
                             .continuous
                     )
@@ -569,7 +552,7 @@ struct DictionaryView: View {
                 )
                 .background(
                     RoundedRectangle(
-                        cornerRadius: 11,
+                        cornerRadius: 14,
                         style:
                             .continuous
                     )
@@ -769,7 +752,10 @@ struct DictionaryView: View {
         _ entry: DictionaryEntry
     ) -> some View {
 
-        HStack(
+        let isHovered =
+            hoveredEntryID == entry.id
+
+        return HStack(
             spacing: 13
         ) {
 
@@ -787,8 +773,8 @@ struct DictionaryView: View {
             )
             .foregroundStyle(
                 entry.type == .replacement
-                ? replacementAccent.opacity(0.86)
-                : termAccent.opacity(0.82)
+                ? FlowVoiceTheme.primaryText.opacity(0.78)
+                : FlowVoiceTheme.primaryText.opacity(0.68)
             )
             .frame(
                 width: 36,
@@ -802,12 +788,10 @@ struct DictionaryView: View {
                 )
                 .fill(
                     (
-                        entry.type == .replacement
-                        ? replacementAccent
-                        : termAccent
+                        FlowVoiceTheme.primaryText
                     )
                     .opacity(
-                        0.17
+                        0.08
                     )
                 )
             )
@@ -932,7 +916,7 @@ struct DictionaryView: View {
                     FlowVoiceTheme.accentButton,
                     in:
                         RoundedRectangle(
-                            cornerRadius: 8,
+                            cornerRadius: 100,
                             style:
                                 .continuous
                         )
@@ -989,11 +973,14 @@ struct DictionaryView: View {
 
                 Button {
 
-                    editingEntry =
+                    presentEditor(
                         entry
+                    ) { saved in
 
-                    showEditor =
-                        true
+                        handleSavedEntry(
+                            saved
+                        )
+                    }
 
                 } label: {
 
@@ -1050,24 +1037,26 @@ struct DictionaryView: View {
         }
         .padding(
             .horizontal,
-            14
+            16
         )
         .frame(
-            minHeight: 60
+            minHeight: 62
         )
         .background(
             RoundedRectangle(
-                cornerRadius: 16,
+                cornerRadius: 18,
                 style:
                     .continuous
             )
             .fill(
-                FlowVoiceTheme.surface
+                isHovered
+                ? FlowVoiceTheme.hoverSurface
+                : FlowVoiceTheme.surface
             )
         )
         .overlay(
             RoundedRectangle(
-                cornerRadius: 16,
+                cornerRadius: 18,
                 style:
                     .continuous
             )
@@ -1075,6 +1064,31 @@ struct DictionaryView: View {
                 FlowVoiceTheme.hairline,
                 lineWidth: 1
             )
+        )
+        .contentShape(
+            RoundedRectangle(
+                cornerRadius: 18,
+                style: .continuous
+            )
+        )
+        .onHover { hovering in
+
+            if hovering {
+
+                hoveredEntryID =
+                    entry.id
+
+            } else if hoveredEntryID == entry.id {
+
+                hoveredEntryID =
+                    nil
+            }
+        }
+        .animation(
+            reduceMotion
+            ? nil
+            : .easeInOut(duration: 0.12),
+            value: isHovered
         )
     }
 
@@ -1517,6 +1531,7 @@ struct DictionaryView: View {
             )
         }
     }
+
 }
 
 
@@ -1524,16 +1539,14 @@ struct DictionaryView: View {
 // MARK: ENTRY EDITOR
 // MARK: =================================================
 
-private struct DictionaryEntryEditor:
+struct DictionaryEntryEditor:
     View {
-
-    @Environment(
-        \.dismiss
-    )
-    private var dismiss
 
     let entry:
         DictionaryEntry?
+
+    let onCancel:
+        () -> Void
 
     let onSaved:
         (DictionaryEntry) -> Void
@@ -1566,12 +1579,24 @@ private struct DictionaryEntryEditor:
 
     var body: some View {
 
-        VStack(
-            alignment: .leading,
-            spacing: 22
-        ) {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .top) {
+                header
 
-            header
+                Spacer()
+
+                Button {
+                    onCancel()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(FlowVoiceTheme.secondaryText)
+                        .frame(width: 32, height: 32)
+                        .background(FlowVoiceTheme.selectedSurface, in: Circle())
+                }
+                .buttonStyle(NoteActionButtonStyle(cornerRadius: 100))
+                .help("Close")
+            }
 
             typePicker
 
@@ -1590,9 +1615,9 @@ private struct DictionaryEntryEditor:
                     errorMessage
                 )
                 .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 11
+                    .system(
+                        size: 12,
+                        weight: .medium
                     )
                 )
                 .foregroundStyle(
@@ -1602,20 +1627,42 @@ private struct DictionaryEntryEditor:
                 )
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
             buttons
         }
-        .padding(26)
+        .padding(28)
         .frame(
-            width: 460,
+            width: 500,
             height:
                 type == .replacement
-                ? 440
-                : 370
+                ? 454
+                : 388
         )
         .background(
-            FlowVoiceTheme.elevatedSurface
+            FlowVoiceTheme.elevatedSurface,
+            in:
+                RoundedRectangle(
+                    cornerRadius: 24,
+                    style: .continuous
+                )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: 24,
+                style: .continuous
+            )
+            .stroke(
+                FlowVoiceTheme.hairline,
+                lineWidth: 1
+            )
+        }
+        .shadow(
+            color:
+                .black.opacity(0.18),
+            radius: 30,
+            x: 0,
+            y: 18
         )
         .foregroundStyle(
             FlowVoiceTheme.primaryText
@@ -1640,11 +1687,11 @@ private struct DictionaryEntryEditor:
                 : "Add to Dictionary"
             )
             .font(
-                .custom(
-                    "Avenir Next",
-                    size: 22
+                .system(
+                    size: 30,
+                    weight: .regular,
+                    design: .serif
                 )
-                .weight(.semibold)
             )
             .foregroundStyle(
                 FlowVoiceTheme.primaryText
@@ -1654,9 +1701,9 @@ private struct DictionaryEntryEditor:
                 "Improve recognition or automatically replace text after transcription."
             )
             .font(
-                .custom(
-                    "Avenir Next",
-                    size: 11
+                .system(
+                    size: 13,
+                    weight: .regular
                 )
             )
             .foregroundStyle(
@@ -1668,28 +1715,22 @@ private struct DictionaryEntryEditor:
     private var typePicker:
         some View {
 
-        Picker(
-            "Type",
-            selection:
-                $type
-        ) {
+        HStack(spacing: 8) {
+            Text("Type")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(FlowVoiceTheme.secondaryText)
 
-            ForEach(
-                DictionaryEntryType.allCases,
-                id: \.self
-            ) { item in
-
-                Text(
-                    item.displayName
-                )
-                .tag(
-                    item
-                )
+            ForEach(DictionaryEntryType.allCases, id: \.self) { item in
+                optionButton(
+                    title: item.displayName,
+                    isSelected: type == item
+                ) {
+                    withAnimation(.easeOut(duration: 0.14)) {
+                        type = item
+                    }
+                }
             }
         }
-        .pickerStyle(
-            .segmented
-        )
     }
 
     private var valueField:
@@ -1724,7 +1765,7 @@ private struct DictionaryEntryEditor:
             )
             .background(
                 RoundedRectangle(
-                    cornerRadius: 10,
+                    cornerRadius: 16,
                     style:
                         .continuous
                 )
@@ -1763,7 +1804,7 @@ private struct DictionaryEntryEditor:
             )
             .background(
                 RoundedRectangle(
-                    cornerRadius: 10,
+                    cornerRadius: 16,
                     style:
                         .continuous
                 )
@@ -1782,26 +1823,73 @@ private struct DictionaryEntryEditor:
                 "SCOPE"
         ) {
 
-            Picker(
-                "Scope",
-                selection:
-                    $scope
-            ) {
+            HStack(spacing: 8) {
+                Text("Scope")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(FlowVoiceTheme.secondaryText)
 
-                Text("Personal")
-                    .tag(
-                        DictionaryScope.personal
-                    )
-
-                Text("Shared")
-                    .tag(
-                        DictionaryScope.shared
-                    )
+                ForEach(DictionaryScope.allCases, id: \.self) { item in
+                    optionButton(
+                        title: item.displayName,
+                        isSelected: scope == item
+                    ) {
+                        withAnimation(.easeOut(duration: 0.14)) {
+                            scope = item
+                        }
+                    }
+                }
             }
-            .pickerStyle(
-                .segmented
+        }
+    }
+
+    private func optionButton(
+        title: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+
+        Button(
+            action:
+                action
+        ) {
+
+            Text(
+                title
+            )
+            .font(
+                .system(
+                    size: 13,
+                    weight: .medium
+                )
+            )
+            .foregroundStyle(
+                isSelected
+                ? FlowVoiceTheme.accentButtonText
+                : FlowVoiceTheme.secondaryText
+            )
+            .padding(
+                .horizontal,
+                14
+            )
+            .frame(
+                height: 34
+            )
+            .background(
+                isSelected
+                ? FlowVoiceTheme.accentButton
+                : FlowVoiceTheme.selectedSurface,
+                in:
+                    Capsule()
             )
         }
+        .buttonStyle(
+            NoteActionButtonStyle(
+                prominent:
+                    isSelected,
+                cornerRadius:
+                    100
+            )
+        )
     }
 
     private func fieldSection<
@@ -1847,13 +1935,28 @@ private struct DictionaryEntryEditor:
                 "Cancel"
             ) {
 
-                dismiss()
+                onCancel()
             }
-            .buttonStyle(
-                .plain
-            )
             .foregroundStyle(
                 FlowVoiceTheme.secondaryText
+            )
+            .font(
+                .system(
+                    size: 13,
+                    weight: .medium
+                )
+            )
+            .padding(
+                .horizontal,
+                12
+            )
+            .frame(
+                height: 34
+            )
+            .buttonStyle(
+                NoteActionButtonStyle(
+                    cornerRadius: 100
+                )
             )
 
             Button {
@@ -1884,11 +1987,32 @@ private struct DictionaryEntryEditor:
                     )
                 }
             }
-            .buttonStyle(
-                .borderedProminent
+            .font(
+                .system(
+                    size: 13,
+                    weight: .semibold
+                )
             )
-            .tint(
-                FlowVoiceTheme.accentButton
+            .foregroundStyle(
+                FlowVoiceTheme.accentButtonText
+            )
+            .frame(
+                height: 34
+            )
+            .padding(
+                .horizontal,
+                8
+            )
+            .background(
+                FlowVoiceTheme.accentButton,
+                in:
+                    Capsule()
+            )
+            .buttonStyle(
+                NoteActionButtonStyle(
+                    prominent: true,
+                    cornerRadius: 100
+                )
             )
             .disabled(
                 !canSave
@@ -2025,8 +2149,6 @@ private struct DictionaryEntryEditor:
                 onSaved(
                     saved
                 )
-
-                dismiss()
 
             } catch DictionaryServiceError.duplicate {
 

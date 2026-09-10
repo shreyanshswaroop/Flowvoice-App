@@ -5,18 +5,26 @@ struct RemoteDictation: Codable, Identifiable {
     let id: String
     let text: String
     let wordCount: Int
+    let durationSeconds: Int?
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
         case id
         case text
         case wordCount = "word_count"
+        case durationSeconds = "duration_seconds"
         case createdAt = "created_at"
     }
 }
 
 private struct CreateDictationBody: Codable {
     let text: String
+    let durationSeconds: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case text
+        case durationSeconds = "duration_seconds"
+    }
 }
 
 @MainActor
@@ -86,7 +94,8 @@ final class DictationService {
     // MARK: - Save
 
     func saveDictation(
-        text: String
+        text: String,
+        durationSeconds: Int?
     ) async throws -> RemoteDictation {
 
         guard let token =
@@ -122,7 +131,8 @@ final class DictationService {
         request.httpBody =
             try JSONEncoder().encode(
                 CreateDictationBody(
-                    text: text
+                    text: text,
+                    durationSeconds: durationSeconds
                 )
             )
 

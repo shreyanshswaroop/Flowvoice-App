@@ -6,7 +6,6 @@ enum SidebarTab:
     case dictation = "Dictation"
     case notetaker = "Notetaker"
     case insights = "Insights"
-    case analytics = "Analytics"
     case dictionary = "Dictionary"
     case snippets = "Snippets"
     case style = "Style"
@@ -33,9 +32,6 @@ enum SidebarTab:
 
         case .insights:
             return "sparkles"
-
-        case .analytics:
-            return "chart.bar.xaxis"
 
         case .dictionary:
             return "text.book.closed"
@@ -66,7 +62,6 @@ enum SidebarTab:
             .dictation,
             .notetaker,
             .insights,
-            .analytics,
             .dictionary,
             .snippets,
             .style,

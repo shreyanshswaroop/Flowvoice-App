@@ -7,25 +7,18 @@ struct TranscriptRow: View {
     let onDelete: () -> Void
 
     @State private var didCopy = false
+    @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
 
         HStack(spacing: 18) {
 
-            Text(item.time)
-                .font(
-                    .system(
-                        size: 13,
-                        weight: .medium
-                    )
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.tertiaryText
-                )
-                .frame(
-                    width: 78,
-                    alignment: .leading
-                )
+            Image(systemName: "waveform")
+                .font(.system(size: 17))
+                .foregroundStyle(FlowVoiceTheme.secondaryText)
+                .frame(width: 38, height: 38)
+                .background(FlowVoiceTheme.selectedSurface, in: RoundedRectangle(cornerRadius: 8))
 
             Text(item.text)
                 .font(
@@ -41,19 +34,24 @@ struct TranscriptRow: View {
                     maxWidth: .infinity,
                     alignment: .leading
                 )
+                .textSelection(.enabled)
 
-            HStack(spacing: 14) {
-
-                // Future playback
-                Button {
-
-                } label: {
-
-                    Image(
-                        systemName: "play"
+            Text(item.createdAt.map { $0.formatted(date: .omitted, time: .shortened) } ?? item.time)
+                .font(
+                    .system(
+                        size: 13,
+                        weight: .medium
                     )
-                }
-                .buttonStyle(.plain)
+                )
+                .foregroundStyle(
+                    FlowVoiceTheme.tertiaryText
+                )
+                .frame(
+                    width: 78,
+                    alignment: .leading
+                )
+
+            HStack(spacing: 4) {
 
                 // Copy
                 Button {
@@ -66,24 +64,15 @@ struct TranscriptRow: View {
                             ? "checkmark"
                             : "doc.on.doc"
                     )
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(NoteActionButtonStyle())
                 .help(
                     didCopy
                     ? "Copied"
                     : "Copy"
                 )
-
-                // Future flag feature
-                Button {
-
-                } label: {
-
-                    Image(
-                        systemName: "flag"
-                    )
-                }
-                .buttonStyle(.plain)
 
                 // More menu
                 Menu {
@@ -118,9 +107,10 @@ struct TranscriptRow: View {
                         systemName: "ellipsis"
                     )
                     .frame(
-                        width: 18,
-                        height: 22
+                        width: 36,
+                        height: 36
                     )
+                    .contentShape(Rectangle())
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
@@ -136,14 +126,13 @@ struct TranscriptRow: View {
                 FlowVoiceTheme.tertiaryText
             )
         }
-        .padding(
-            .horizontal,
-            18
-        )
-        .padding(
-            .vertical,
-            18
-        )
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(isHovered ? FlowVoiceTheme.hoverSurface : .clear,
+                    in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.12), value: isHovered)
     }
 
     // MARK: - Copy

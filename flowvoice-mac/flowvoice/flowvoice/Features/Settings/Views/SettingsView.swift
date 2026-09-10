@@ -161,12 +161,6 @@ struct SettingsView: View {
                 icon: "folder"
             )
 
-        case .analytics:
-            placeholder(
-                title: "Analytics",
-                icon: "chart.xyaxis.line"
-            )
-
         case .billing:
             placeholder(
                 title: "Billing",

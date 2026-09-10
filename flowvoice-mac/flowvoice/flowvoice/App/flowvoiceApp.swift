@@ -166,6 +166,12 @@ struct flowvoiceApp: App {
             window.isOpaque =
                 true
 
+            MainWindowControlPositioner
+                .shared
+                .configure(
+                    window: window
+                )
+
             closeDuplicateMainWindows(
                 keeping: window
             )
@@ -194,5 +200,106 @@ struct flowvoiceApp: App {
         mainWindow.makeKeyAndOrderFront(
             nil
         )
+    }
+}
+
+// MARK: - Main Window Controls
+
+private final class MainWindowControlPositioner {
+
+    static let shared =
+        MainWindowControlPositioner()
+
+    private weak var window:
+        NSWindow?
+
+    private var resizeObserver:
+        NSObjectProtocol?
+
+    private var originalOrigins:
+        [NSWindow.ButtonType: NSPoint] = [:]
+
+    private let horizontalOffset:
+        CGFloat = 8
+
+    private let verticalOffset:
+        CGFloat = 8
+
+    private init() {}
+
+    func configure(
+        window: NSWindow
+    ) {
+
+        if self.window !== window {
+
+            resizeObserver.map(
+                NotificationCenter.default.removeObserver
+            )
+
+            self.window =
+                window
+
+            originalOrigins.removeAll()
+
+            resizeObserver =
+                NotificationCenter.default.addObserver(
+                    forName: NSWindow.didResizeNotification,
+                    object: window,
+                    queue: .main
+                ) { [weak self] _ in
+
+                    self?.positionControls()
+                }
+        }
+
+        positionControls()
+    }
+
+    private func positionControls() {
+
+        guard let window else {
+            return
+        }
+
+        buttonTypes.forEach { buttonType in
+
+            guard let button =
+                window.standardWindowButton(
+                    buttonType
+                )
+            else {
+                return
+            }
+
+            if originalOrigins[buttonType] == nil {
+
+                originalOrigins[buttonType] =
+                    button.frame.origin
+            }
+
+            guard let origin =
+                originalOrigins[buttonType]
+            else {
+                return
+            }
+
+            button.setFrameOrigin(
+                NSPoint(
+                    x: origin.x + horizontalOffset,
+                    y: origin.y - verticalOffset
+                )
+            )
+        }
+    }
+
+    private var buttonTypes:
+        [NSWindow.ButtonType] {
+
+        [
+            .closeButton,
+            .miniaturizeButton,
+            .zoomButton
+        ]
     }
 }

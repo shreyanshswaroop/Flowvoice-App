@@ -27,6 +27,15 @@ struct ContentView: View {
     @State private var showHelp =
         false
 
+    @State private var showDictionaryEditor =
+        false
+
+    @State private var dictionaryEditorEntry:
+        DictionaryEntry?
+
+    @State private var dictionaryEditorOnSaved:
+        ((DictionaryEntry) -> Void)?
+
     @State private var isSidebarCollapsed =
         false
 
@@ -118,14 +127,14 @@ struct ContentView: View {
                     )
                     .clipShape(
                         RoundedRectangle(
-                            cornerRadius: 22,
+                            cornerRadius: 12,
                             style: .continuous
                         )
                     )
                     .overlay {
 
                         RoundedRectangle(
-                            cornerRadius: 22,
+                            cornerRadius: 12,
                             style: .continuous
                         )
                         .stroke(
@@ -135,7 +144,7 @@ struct ContentView: View {
                     }
                     .padding(
                         EdgeInsets(
-                            top: 0,
+                            top: 10,
                             leading: 8,
                             bottom: 10,
                             trailing: 10
@@ -145,6 +154,10 @@ struct ContentView: View {
                 .frame(
                     maxWidth: .infinity,
                     maxHeight: .infinity
+                )
+                .ignoresSafeArea(
+                    .container,
+                    edges: .top
                 )
             }
 
@@ -172,6 +185,32 @@ struct ContentView: View {
                         showSettings =
                             true
                     }
+                }
+                .transition(
+                    .scale(scale: 0.97)
+                    .combined(with: .opacity)
+                )
+                .zIndex(2)
+            }
+
+            // MARK: - Dictionary Editor
+
+            if showDictionaryEditor {
+
+                dictionaryEditorBackdrop
+
+                DictionaryEntryEditor(
+                    entry:
+                        dictionaryEditorEntry,
+                    onCancel:
+                        closeDictionaryEditor
+                ) { saved in
+
+                    dictionaryEditorOnSaved?(
+                        saved
+                    )
+
+                    closeDictionaryEditor()
                 }
                 .transition(
                     .scale(scale: 0.97)
@@ -250,6 +289,14 @@ struct ContentView: View {
             value: showHelp
         )
 
+        .animation(
+            .spring(
+                response: 0.32,
+                dampingFraction: 0.88
+            ),
+            value: showDictionaryEditor
+        )
+
         // MARK: - Sidebar Toggle Notification
 
         .onReceive(
@@ -312,6 +359,10 @@ struct ContentView: View {
                     showHelp =
                         false
                 }
+
+            } else if showDictionaryEditor {
+
+                closeDictionaryEditor()
             }
         }
     }
@@ -356,6 +407,37 @@ struct ContentView: View {
         .zIndex(1)
     }
 
+    // MARK: - Dictionary Editor Backdrop
+
+    private var dictionaryEditorBackdrop:
+        some View {
+
+        ZStack {
+
+            Color.black
+                .opacity(0.13)
+
+            Color(
+                red: 0.82,
+                green: 0.75,
+                blue: 0.64
+            )
+            .opacity(0.05)
+        }
+        .ignoresSafeArea()
+        .contentShape(
+            Rectangle()
+        )
+        .onTapGesture {
+
+            closeDictionaryEditor()
+        }
+        .transition(
+            .opacity
+        )
+        .zIndex(1)
+    }
+
     // MARK: - Content Area
 
     @ViewBuilder
@@ -379,13 +461,11 @@ struct ContentView: View {
 
             InsightsView()
 
-        case .analytics:
-
-            AnalyticsView()
-
         case .dictionary:
 
-            DictionaryView()
+            DictionaryView(
+                presentEditor: presentDictionaryEditor
+            )
 
         case .snippets:
 
@@ -425,6 +505,51 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Dictionary Editor
+
+    private func presentDictionaryEditor(
+        entry: DictionaryEntry?,
+        onSaved: @escaping (DictionaryEntry) -> Void
+    ) {
+
+        dictionaryEditorEntry =
+            entry
+
+        dictionaryEditorOnSaved =
+            onSaved
+
+        withAnimation(
+            .spring(
+                response: 0.28,
+                dampingFraction: 0.9
+            )
+        ) {
+
+            showDictionaryEditor =
+                true
+        }
+    }
+
+    private func closeDictionaryEditor() {
+
+        withAnimation(
+            .spring(
+                response: 0.28,
+                dampingFraction: 0.9
+            )
+        ) {
+
+            showDictionaryEditor =
+                false
+        }
+
+        dictionaryEditorEntry =
+            nil
+
+        dictionaryEditorOnSaved =
+            nil
+    }
+
     // MARK: - Load Dictations
 
     private func loadHistory() async {
@@ -448,7 +573,8 @@ struct ContentView: View {
                                     dictation.createdAt
                             ),
                         text:
-                            dictation.text
+                            dictation.text,
+                        createdAt: DictationEntry.parseDate(dictation.createdAt)
                     )
                 }
 
@@ -566,14 +692,16 @@ struct ContentView: View {
 
         // Temporary local row
 
+        let capturedAt = Date()
         let localEntry =
             DictationEntry(
                 time:
                     timeString(
-                        for: Date()
+                        for: capturedAt
                     ),
                 text:
-                    cleaned
+                    cleaned,
+                createdAt: capturedAt
             )
 
         history.insert(
@@ -592,7 +720,10 @@ struct ContentView: View {
                         .shared
                         .saveDictation(
                             text:
-                                cleaned
+                                cleaned,
+                            durationSeconds:
+                                controller
+                                    .lastDictationDurationSeconds
                         )
 
                 let savedEntry =
@@ -607,7 +738,8 @@ struct ContentView: View {
                                     saved.createdAt
                             ),
                         text:
-                            saved.text
+                            saved.text,
+                        createdAt: DictationEntry.parseDate(saved.createdAt) ?? localEntry.createdAt
                     )
 
                 if let index =

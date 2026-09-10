@@ -38,6 +38,9 @@ final class FlowVoiceController: ObservableObject {
     private var isProcessingInsertion =
         false
 
+    private var dictationStartedAt:
+        Date?
+
     @Published var isConnected =
         false
 
@@ -74,6 +77,9 @@ final class FlowVoiceController: ObservableObject {
 
     @Published var audioLevel:
         Double = 0
+
+    @Published var lastDictationDurationSeconds:
+        Int?
 
     private var cancellables =
         Set<AnyCancellable>()
@@ -505,6 +511,12 @@ final class FlowVoiceController: ObservableObject {
                 isProcessingInsertion =
                     false
 
+                dictationStartedAt =
+                    Date()
+
+                lastDictationDurationSeconds =
+                    nil
+
                 displayTranscript =
                     "Listening..."
 
@@ -589,6 +601,23 @@ final class FlowVoiceController: ObservableObject {
 
         audioLevel =
             0
+
+        if let dictationStartedAt {
+            lastDictationDurationSeconds =
+                max(
+                    1,
+                    Int(
+                        Date()
+                            .timeIntervalSince(
+                                dictationStartedAt
+                            )
+                            .rounded()
+                    )
+                )
+        }
+
+        dictationStartedAt =
+            nil
 
         shouldInsertOnFinal =
             true

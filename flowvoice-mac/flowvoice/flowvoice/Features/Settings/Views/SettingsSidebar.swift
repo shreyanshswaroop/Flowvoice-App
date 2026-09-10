@@ -49,79 +49,35 @@ struct SettingsSidebar: View {
 
         VStack(
             alignment: .leading,
-            spacing: 10
+            spacing: 3
         ) {
 
-            HStack {
-
-                Spacer()
-
-                ZStack {
-
-                    Circle()
-                        .fill(
-                            Color.orange
-                                .opacity(0.18)
-                        )
-
-                    Circle()
-                        .stroke(
-                            Color.orange
-                                .opacity(0.35),
-                            lineWidth: 1
-                        )
-
-                    Text(userInitial)
-                        .font(
-                            .system(
-                                size: 19,
-                                weight: .medium,
-                                design: .serif
-                            )
-                        )
-                        .foregroundStyle(
-                            Color.orange
-                        )
-                }
-                .frame(
-                    width: 42,
-                    height: 42
+            Text(userName)
+                .font(
+                    .system(
+                        size: 16,
+                        weight: .semibold
+                    )
                 )
+                .foregroundStyle(
+                    Color.primary
+                )
+                .lineLimit(1)
 
-                Spacer()
-            }
-
-            VStack(
-                alignment: .leading,
-                spacing: 3
-            ) {
-
-                Text(userName)
-                    .font(
-                        .system(
-                            size: 16,
-                            weight: .semibold
-                        )
+            Text(userEmail)
+                .font(
+                    .system(
+                        size: 12,
+                        weight: .regular
                     )
-                    .foregroundStyle(
-                        Color.primary
-                    )
-                    .lineLimit(1)
-
-                Text(userEmail)
-                    .font(
-                        .system(
-                            size: 12
-                        )
-                    )
-                    .foregroundStyle(
-                        Color.secondary
-                    )
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .padding(.horizontal, 4)
+                )
+                .foregroundStyle(
+                    Color.secondary
+                )
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
+        .padding(.horizontal, 4)
     }
 
     // MARK: - Personal Navigation
@@ -278,15 +234,9 @@ struct SettingsSidebar: View {
             .email ??
             ""
     }
-
-    private var userInitial: String {
-
-        String(
-            userName.prefix(1)
-        )
-        .uppercased()
-    }
 }
+
+// MARK: - Settings Sidebar Row
 
 private struct SettingsSidebarRow: View {
 
@@ -338,6 +288,13 @@ private struct SettingsSidebarRow: View {
             .foregroundStyle(
                 FlowVoiceTheme.primaryText
             )
+            .opacity(
+                isSelected
+                    ? 1.0
+                    : isHovering
+                        ? 0.82
+                        : 0.46
+            )
             .padding(
                 .horizontal,
                 11
@@ -346,7 +303,6 @@ private struct SettingsSidebarRow: View {
                 height: 30
             )
             .background {
-
                 rowBackground
             }
             .contentShape(
@@ -361,25 +317,19 @@ private struct SettingsSidebarRow: View {
                     duration: 0.12
                 )
             ) {
-                isHovering = hovering
+
+                isHovering =
+                    hovering
             }
         }
     }
 
+    // MARK: - Background
+
     @ViewBuilder
     private var rowBackground: some View {
 
-        if isSelected {
-
-            RoundedRectangle(
-                cornerRadius: 10,
-                style: .continuous
-            )
-            .fill(
-                FlowVoiceTheme.selectedSurface
-            )
-
-        } else if isHovering {
+        if isHovering && !isSelected {
 
             RoundedRectangle(
                 cornerRadius: 10,

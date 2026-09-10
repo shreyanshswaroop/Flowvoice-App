@@ -52,6 +52,8 @@ struct FlowVoiceSidebar: View {
 
     // MARK: - Header
 
+    // MARK: - Header
+
     private var header: some View {
 
         HStack(spacing: 10) {
@@ -107,7 +109,7 @@ struct FlowVoiceSidebar: View {
                     Color.primary
                 )
                 .frame(
-                    width: 42,
+                    width: isCollapsed ? 42 : 20,
                     height: 42
                 )
                 .contentShape(
@@ -142,41 +144,31 @@ struct FlowVoiceSidebar: View {
 
             if !isCollapsed {
 
-                HStack(spacing: 3) {
-
-                    Text("Flow")
-                        .font(
-                            .system(
-                                size: 28,
-                                weight: .regular,
-                                design: .serif
-                            )
+                Text("Flow Voice")
+                    .font(
+                        .system(
+                            size: 14,
+                            weight: .regular
                         )
-
-                    Text("Voice")
-                        .font(
-                            .system(
-                                size: 29,
-                                weight: .regular,
-                                design: .serif
-                            )
-                        )
-                        .italic()
-                }
-                .foregroundStyle(
-                    Color.primary
-                )
-                .lineLimit(1)
-                .fixedSize(
-                    horizontal: true,
-                    vertical: false
-                )
+                    )
+                    .foregroundStyle(
+                        FlowVoiceTheme.primaryText
+                    )
+                    .lineLimit(1)
+                    .fixedSize(
+                        horizontal: true,
+                        vertical: false
+                    )
 
                 Spacer(
                     minLength: 0
                 )
             }
         }
+        .padding(
+            .horizontal,
+            isCollapsed ? 0 : 11
+        )
         .frame(
             maxWidth: .infinity,
             alignment:

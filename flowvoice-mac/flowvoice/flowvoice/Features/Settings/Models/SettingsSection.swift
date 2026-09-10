@@ -15,7 +15,6 @@ enum SettingsSection:
     case workspaceGeneral
     case members
     case spaces
-    case analytics
     case billing
     case referrals
 
@@ -53,9 +52,6 @@ enum SettingsSection:
 
         case .spaces:
             return "Spaces"
-
-        case .analytics:
-            return "Analytics"
 
         case .billing:
             return "Billing"
@@ -96,9 +92,6 @@ enum SettingsSection:
         case .spaces:
             return "folder"
 
-        case .analytics:
-            return "chart.xyaxis.line"
-
         case .billing:
             return "creditcard"
 
@@ -123,7 +116,6 @@ enum SettingsSection:
             .workspaceGeneral,
             .members,
             .spaces,
-            .analytics,
             .billing,
             .referrals
         ]

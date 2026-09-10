@@ -10,19 +10,9 @@ struct DictationDashboardView: View {
     private let pageBackground =
         FlowVoiceTheme.pageBackground
 
-    private let warmOrange =
-        Color(
-            red: 0.96,
-            green: 0.53,
-            blue: 0.19
-        )
-
-    private let softGreen =
-        Color(
-            red: 0.35,
-            green: 0.63,
-            blue: 0.39
-        )
+    @State private var searchText = ""
+    @State private var showingSearch = false
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
 
@@ -30,22 +20,22 @@ struct DictationDashboardView: View {
 
             VStack(
                 alignment: .leading,
-                spacing: 28
+                spacing: 36
             ) {
-                
-                
 
-                heroSection
+                overviewHeader
 
-                quickStats
+                dictationFeaturePanel
 
-                historySection
-
-                featureSection
+                activitySection
             }
-            .padding(.horizontal, 34)
-            .padding(.top, 28)
-            .padding(.bottom, 50)
+            .frame(
+                maxWidth: 940,
+                alignment: .leading
+            )
+            .padding(.horizontal, 58)
+            .padding(.top, 18)
+            .padding(.bottom, 58)
         }
         .scrollIndicators(.hidden)
         .background(
@@ -53,147 +43,132 @@ struct DictationDashboardView: View {
         )
     }
 
-    // MARK: - Hero
+    private var dictationFeaturePanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("FLOWVOICE", systemImage: "waveform")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.8))
 
-    private var heroSection: some View {
+            Text("Your voice.\nYour words.")
+                .font(.system(size: 32, weight: .regular, design: .serif))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
 
-        ZStack {
-
-            heroBackground
-
-            HStack(
-                alignment: .center,
-                spacing: 20
-            ) {
-
-                heroCopy
-                    .frame(
-                        maxWidth: 760,
-                        alignment: .leading
-                    )
-                    .layoutPriority(1)
-
-                Spacer(minLength: 0)
-
-                readyCard
-                    .offset(x: 14)
-            }
-            .padding(.horizontal, 34)
-            .padding(.vertical, 26)
+            Text("Capture a thought, draft a message,\nand keep your ideas moving.")
+                .font(.system(size: 14))
+                .lineSpacing(4)
+                .foregroundStyle(.white.opacity(0.88))
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(height: 250)
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: 28,
-                style: .continuous
-            )
-        )
-        .overlay {
-
-            RoundedRectangle(
-                cornerRadius: 28,
-                style: .continuous
-            )
-            .stroke(
-                FlowVoiceTheme.strongHairline,
-                lineWidth: 1
-            )
-        }
-        .shadow(
-            color: .black.opacity(0.03),
-            radius: 14,
-            x: 0,
-            y: 8
-        )
-    }
-
-    private var heroBackground: some View {
-
-        GeometryReader { proxy in
-
-            ZStack {
-
-                Image("FlowClouds")
+        .padding(28)
+        .frame(maxWidth: .infinity, minHeight: 224, alignment: .leading)
+        .background {
+            GeometryReader { geometry in
+                Image("NotetakerAbstractHero")
                     .resizable()
                     .scaledToFill()
-                    .frame(
-                        width: proxy.size.width,
-                        height: proxy.size.height
-                    )
+                    .frame(width: geometry.size.width, height: geometry.size.height)
                     .clipped()
-
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.25),
-                        pageBackground.opacity(0.35),
-                        pageBackground.opacity(0.72)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                    .overlay {
+                        LinearGradient(
+                            colors: [.black.opacity(0.72), .black.opacity(0.25), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    }
+                    .accessibilityHidden(true)
             }
-            .frame(
-                width: proxy.size.width,
-                height: proxy.size.height
-            )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(FlowVoiceTheme.hairline, lineWidth: 1)
+                .allowsHitTesting(false)
         }
     }
 
-    // MARK: - Hero Copy
+    // MARK: - Overview
 
-    private var heroCopy: some View {
+    private var overviewHeader: some View {
 
         VStack(
             alignment: .leading,
-            spacing: 14
+            spacing: 28
         ) {
+
+            HStack(spacing: 8) {
+
+                Image(systemName: "mic")
+                    .font(
+                        .system(
+                            size: 14,
+                            weight: .medium
+                        )
+                    )
+
+                Text("Dictation")
+                    .font(
+                        .system(
+                            size: 14,
+                            weight: .medium
+                        )
+                    )
+            }
+            .foregroundStyle(
+                FlowVoiceTheme.tertiaryText
+            )
 
             VStack(
                 alignment: .leading,
-                spacing: 4
+                spacing: 18
             ) {
 
-                Text("Hi \(firstName),")
+                Text("\(timeBasedGreeting), \(firstName)")
                     .font(
-                        .custom("Avenir Next", size: 42)
-                        .weight(.medium)
+                        .system(
+                            size: 30,
+                            weight: .regular,
+                            design: .serif
+                        )
                     )
                     .foregroundStyle(
                         FlowVoiceTheme.primaryText
                     )
+                    .fixedSize(horizontal: false, vertical: true)
 
-                Text("ready to get back in the flow?")
-                    .font(
-                        .custom("GrandHotel", size: 34)
-                    )
-                    .foregroundStyle(
-                        FlowVoiceTheme.primaryText
-                    )
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .fixedSize(
-                        horizontal: true,
-                        vertical: false
-                    )
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 24) {
+                        statistics
+                        Spacer(minLength: 24)
+                        shortcutLabel
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        statistics
+                        shortcutLabel
+                    }
+                }
             }
+        }
+    }
 
-            Text(
-                "Capture what’s on your mind, dictate anywhere, and keep moving without breaking your focus."
-            )
-            .font(
-                .custom("Avenir Next", size: 14)
-            )
-            .foregroundStyle(
-                FlowVoiceTheme.secondaryText
-            )
-            .lineSpacing(3)
-            .frame(
-                maxWidth: 560,
-                alignment: .leading
+    private var timeBasedGreeting: String {
+
+        let hour =
+            Calendar.current.component(
+                .hour,
+                from: Date()
             )
 
-            shortcutBadge
-                .padding(.top, 2)
+        switch hour {
+
+        case 5..<12:
+            return "Good morning"
+
+        case 12..<17:
+            return "Good afternoon"
+
+        default:
+            return "Good evening"
         }
     }
 
@@ -212,673 +187,103 @@ struct DictationDashboardView: View {
             ?? name
     }
 
-    // MARK: - Shortcut Badge
-
-    private var shortcutBadge: some View {
-
-        HStack(
-            spacing: 9
-        ) {
-
-            Image(
-                systemName: "waveform"
-            )
-            .font(
-                .system(
-                    size: 11,
-                    weight: .semibold
-                )
-            )
-
-            Text("Hold ⌥ Space and speak")
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 11
-                    )
-                    .weight(.medium)
-                )
+    private var statistics: some View {
+        HStack(spacing: 18) {
+            statistic(value: totalWordCount, label: "words captured")
+            Rectangle()
+                .fill(FlowVoiceTheme.hairline)
+                .frame(width: 1, height: 14)
+            statistic(value: history.count, label: "dictations")
         }
-        .foregroundStyle(
-            FlowVoiceTheme.secondaryText
-        )
-        .padding(
-            .horizontal,
-            13
-        )
-        .padding(
-            .vertical,
-            8
-        )
-        .background {
+        .fixedSize()
+    }
 
-            Capsule()
-                .fill(
-                    FlowVoiceTheme.elevatedSurface.opacity(0.86)
-                )
-                .overlay {
-
-                    Capsule()
-                        .stroke(
-                            FlowVoiceTheme.strongHairline,
-                            lineWidth: 0.8
-                        )
-                }
+    private func statistic(value: Int, label: String) -> some View {
+        HStack(spacing: 5) {
+            Text(value.formatted())
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(FlowVoiceTheme.primaryText)
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(FlowVoiceTheme.secondaryText)
         }
     }
 
-    // MARK: - Ready Card
-
-    private var readyCard: some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 6
-        ) {
-
-            HStack(
-                spacing: 6
-            ) {
-
-                Circle()
-                    .fill(softGreen)
-                    .frame(width: 6, height: 6)
-
-                Text("READY")
-                    .font(
-                        .custom("Avenir Next", size: 8.5)
-                        .weight(.semibold)
-                    )
-                    .tracking(1.2)
-                    .foregroundStyle(
-                        FlowVoiceTheme.tertiaryText
-                    )
-            }
-
-            Text("Speak\nnaturally.")
-                .font(
-                    .custom("Avenir Next", size: 18)
-                    .weight(.semibold)
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.primaryText
-                )
-                .lineSpacing(-1)
-
-            Text("FlowVoice handles the rest.")
-                .font(
-                    .custom("Avenir Next", size: 9.5)
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.secondaryText
-                )
-                .fixedSize(
-                    horizontal: false,
-                    vertical: true
-                )
+    private var shortcutLabel: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "keyboard")
+            Text("Hold Option + Space")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(
-            width: 155,
-            alignment: .leading
-        )
-        .background {
-
-            RoundedRectangle(
-                cornerRadius: 22,
-                style: .continuous
-            )
-            .fill(
-                FlowVoiceTheme.elevatedSurface.opacity(0.94)
-            )
-        }
-        .overlay {
-
-            RoundedRectangle(
-                cornerRadius: 22,
-                style: .continuous
-            )
-            .stroke(
-                FlowVoiceTheme.strongHairline,
-                lineWidth: 1
-            )
-        }
-        .shadow(
-            color: .black.opacity(0.05),
-            radius: 14,
-            x: 0,
-            y: 8
-        )
+        .font(.system(size: 11))
+        .foregroundStyle(FlowVoiceTheme.tertiaryText)
+        .fixedSize()
     }
 
-    // MARK: - Stats
+    // MARK: - Activity
 
-    private var quickStats: some View {
-
-        HStack(
-            spacing: 12
-        ) {
-
-            statCard(
-                eyebrow: "VOICE MEMORY",
-                value: "\(totalWordCount)",
-                label: "total words",
-                icon: "text.quote",
-                tint: warmOrange
-            )
-
-            statCard(
-                eyebrow: "RECENT ACTIVITY",
-                value: "\(history.count)",
-                label: "dictations",
-                icon: "clock.arrow.circlepath",
-                tint: .blue
-            )
-
-            statCard(
-                eyebrow: "FAST ACCESS",
-                value: "⌥ Space",
-                label: "shortcut",
-                icon: "command",
-                tint: softGreen
-            )
-        }
-    }
-
-    private func statCard(
-        eyebrow: String,
-        value: String,
-        label: String,
-        icon: String,
-        tint: Color
-    ) -> some View {
-
-        HStack(
-            spacing: 14
-        ) {
-
-            RoundedRectangle(
-                cornerRadius: 14,
-                style: .continuous
-            )
-            .fill(
-                tint.opacity(0.10)
-            )
-            .frame(
-                width: 42,
-                height: 42
-            )
-            .overlay {
-
-                Image(
-                    systemName: icon
-                )
-                .font(
-                    .system(
-                        size: 16,
-                        weight: .medium
-                    )
-                )
-                .foregroundStyle(
-                    tint
-                )
-            }
-
-            VStack(
-                alignment: .leading,
-                spacing: 1
-            ) {
-
-                Text(eyebrow)
-                    .font(
-                        .custom(
-                            "Avenir Next",
-                            size: 8.5
-                        )
-                        .weight(.semibold)
-                    )
-                    .tracking(1.5)
-                    .foregroundStyle(
-                        FlowVoiceTheme.mutedText
-                    )
-
-                HStack(
-                    alignment: .firstTextBaseline,
-                    spacing: 6
-                ) {
-
-                    Text(value)
-                        .font(
-                            .system(
-                                size: 24,
-                                weight: .regular,
-                                design: .serif
-                            )
-                        )
-                        .foregroundStyle(
-                            FlowVoiceTheme.primaryText
-                        )
-                        .lineLimit(1)
-
-                    Text(label)
-                        .font(
-                            .custom(
-                                "Avenir Next",
-                                size: 11.5
-                            )
-                            .weight(.medium)
-                        )
-                        .foregroundStyle(
-                            FlowVoiceTheme.secondaryText
-                        )
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer(
-                minLength: 0
-            )
-        }
-        .padding(
-            .horizontal,
-            18
-        )
-        .padding(
-            .vertical,
-            10
-        )
-        .frame(
-            maxWidth: .infinity,
-            minHeight: 74
-        )
-        .background {
-
-            RoundedRectangle(
-                cornerRadius: 22,
-                style: .continuous
-            )
-            .fill(
-                .ultraThinMaterial
-            )
-            .overlay {
-
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.38),
-                        Color.white.opacity(0.08)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .clipShape(
-                    RoundedRectangle(
-                        cornerRadius: 22,
-                        style: .continuous
-                    )
-                )
-            }
-        }
-        .overlay {
-
-            RoundedRectangle(
-                cornerRadius: 22,
-                style: .continuous
-            )
-            .stroke(
-                FlowVoiceTheme.strongHairline,
-                lineWidth: 1
-            )
-        }
-        .shadow(
-            color: .white.opacity(0.22),
-            radius: 2,
-            x: 0,
-            y: 1
-        )
-        .shadow(
-            color: .black.opacity(0.05),
-            radius: 14,
-            x: 0,
-            y: 8
-        )
-    }
-
-    // MARK: - History
-
-    private var historySection: some View {
-
-        VStack(
-            alignment: .leading,
-            spacing: 13
-        ) {
-
+    private var activitySection: some View {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
-
-                VStack(
-                    alignment: .leading,
-                    spacing: 1
-                ) {
-
-                    Text("VOICE HISTORY")
-                        .font(
-                            .custom(
-                                "Avenir Next",
-                                size: 9
-                            )
-                            .weight(.semibold)
-                        )
-                        .tracking(1.7)
-                        .foregroundStyle(
-                            FlowVoiceTheme.mutedText
-                        )
-
-                    Text("Today")
-                        .font(
-                            .custom(
-                                "GrandHotel",
-                                size: 35
-                            )
-                        )
-                        .foregroundStyle(
-                            FlowVoiceTheme.primaryText
-                        )
-                }
-
                 Spacer()
-
-                Image(
-                    systemName: "magnifyingglass"
-                )
-                .font(
-                    .system(
-                        size: 14,
-                        weight: .medium
-                    )
-                )
-                .foregroundStyle(
-                    FlowVoiceTheme.tertiaryText
-                )
-                .frame(
-                    width: 34,
-                    height: 34
-                )
-                .background {
-
-                    Circle()
-                        .fill(
-                            FlowVoiceTheme.elevatedSurface
-                        )
+                Button {
+                    showingSearch.toggle()
+                    searchFocused = showingSearch
+                    if !showingSearch { searchText = "" }
+                } label: {
+                    Image(systemName: showingSearch ? "xmark" : "magnifyingglass")
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(NoteActionButtonStyle())
+                .help(showingSearch ? "Close search" : "Search dictations")
+                .accessibilityLabel(showingSearch ? "Close search" : "Search dictations")
             }
-
-            VStack(
-                spacing: 0
-            ) {
-
-                ForEach(
-                    Array(
-                        history.enumerated()
-                    ),
-                    id: \.element.id
-                ) { index, item in
-
-                    TranscriptRow(
-                        item: item
-                    ) {
-                        onDelete(item)
-                    }
-
-                    if index != history.count - 1 {
-
-                        Divider()
-                            .overlay(
-                                FlowVoiceTheme.divider
-                            )
-                            .padding(
-                                .leading,
-                                96
-                            )
+            if showingSearch {
+                TextField("Search dictations", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($searchFocused)
+            }
+            if filteredHistory.isEmpty {
+                Label(history.isEmpty ? "No dictations yet" : "No matching dictations",
+                      systemImage: history.isEmpty ? "waveform" : "magnifyingglass")
+                    .font(.system(size: 14))
+                    .foregroundStyle(FlowVoiceTheme.tertiaryText)
+                    .frame(maxWidth: .infinity, minHeight: 110)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    ForEach(groupedHistory, id: \.day) { group in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(dayTitle(group.day))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(FlowVoiceTheme.secondaryText)
+                            ForEach(group.entries) { entry in
+                                TranscriptRow(item: entry) { onDelete(entry) }
+                            }
+                        }
                     }
                 }
             }
-            .background {
-
-                RoundedRectangle(
-                    cornerRadius: 23,
-                    style: .continuous
-                )
-                .fill(
-                    FlowVoiceTheme.surface
-                )
-            }
-            .overlay {
-
-                RoundedRectangle(
-                    cornerRadius: 23,
-                    style: .continuous
-                )
-                .stroke(
-                    FlowVoiceTheme.hairline,
-                    lineWidth: 1
-                )
-            }
-            .shadow(
-                color: .black.opacity(0.025),
-                radius: 14,
-                x: 0,
-                y: 7
-            )
         }
     }
 
-    // MARK: - Feature Images
-
-    private var featureSection: some View {
-
-        HStack(
-            spacing: 18
-        ) {
-
-            flowFeatureCard
-
-            memoryFeatureCard
-        }
-        .frame(
-            minHeight: 245
-        )
+    private var filteredHistory: [DictationEntry] {
+        history.filter { searchText.isEmpty || $0.text.localizedStandardContains(searchText) }
     }
 
-    // MARK: - Landscape
-
-    private var flowFeatureCard: some View {
-
-        ZStack(
-            alignment: .bottomLeading
-        ) {
-
-            GeometryReader { proxy in
-
-                Image(
-                    "FlowLandscape"
-                )
-                .resizable()
-                .scaledToFill()
-                .frame(
-                    width: proxy.size.width,
-                    height: proxy.size.height
-                )
-                .offset(
-                    x: 34,
-                    y: 0
-                )
-                .clipped()
-            }
-
-            LinearGradient(
-                colors: [
-                    Color.clear,
-                    Color.black.opacity(0.10),
-                    Color.black.opacity(0.48)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            VStack(
-                alignment: .leading,
-                spacing: 5
-            ) {
-
-                Text(
-                    "FIND YOUR FLOW"
-                )
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 9
-                    )
-                    .weight(.semibold)
-                )
-                .tracking(1.8)
-                .foregroundStyle(
-                    Color.white.opacity(0.72)
-                )
-
-                Text(
-                    "Speak. Keep moving."
-                )
-                .font(
-                    .custom(
-                        "GrandHotel",
-                        size: 34
-                    )
-                )
-                .foregroundStyle(
-                    Color.white
-                )
-
-                Text(
-                    "Your voice should disappear into the work, not interrupt it."
-                )
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 11
-                    )
-                )
-                .foregroundStyle(
-                    Color.white.opacity(0.78)
-                )
-                .frame(
-                    maxWidth: 280,
-                    alignment: .leading
-                )
-            }
-            .padding(22)
+    private var groupedHistory: [(day: Date?, entries: [DictationEntry])] {
+        let groups = Dictionary(grouping: filteredHistory) { entry in
+            entry.createdAt.map { Calendar.current.startOfDay(for: $0) }
         }
-        .frame(
-            maxWidth: .infinity,
-            minHeight: 245
-        )
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: 25,
-                style: .continuous
-            )
-        )
+        return groups.map { day, entries in
+            (day: day, entries: entries.sorted {
+                ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast)
+            })
+        }.sorted { ($0.day ?? .distantPast) > ($1.day ?? .distantPast) }
     }
 
-    // MARK: - Meeting Memory
-
-    private var memoryFeatureCard: some View {
-
-        ZStack(
-            alignment: .bottomLeading
-        ) {
-
-            Image(
-                "FlowMeeting"
-            )
-            .resizable()
-            .scaledToFill()
-            .frame(
-                maxWidth: .infinity,
-                minHeight: 245
-            )
-            .clipped()
-
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.02),
-                    Color.black.opacity(0.20),
-                    Color.black.opacity(0.63)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            VStack(
-                alignment: .leading,
-                spacing: 5
-            ) {
-
-                Text(
-                    "VOICE MEMORY"
-                )
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 9
-                    )
-                    .weight(.semibold)
-                )
-                .tracking(1.8)
-                .foregroundStyle(
-                    Color.white.opacity(0.72)
-                )
-
-                Text(
-                    "Remember what mattered."
-                )
-                .font(
-                    .custom(
-                        "GrandHotel",
-                        size: 34
-                    )
-                )
-                .foregroundStyle(
-                    Color.white
-                )
-
-                Text(
-                    "Keep conversations, thoughts and important words close."
-                )
-                .font(
-                    .custom(
-                        "Avenir Next",
-                        size: 11
-                    )
-                )
-                .foregroundStyle(
-                    Color.white.opacity(0.78)
-                )
-                .frame(
-                    maxWidth: 280,
-                    alignment: .leading
-                )
-            }
-            .padding(22)
-        }
-        .frame(
-            maxWidth: .infinity
-        )
-        .clipShape(
-            RoundedRectangle(
-                cornerRadius: 25,
-                style: .continuous
-            )
-        )
+    private func dayTitle(_ day: Date?) -> String {
+        guard let day else { return "Earlier dictations" }
+        return HistoryDateFormat.day(day)
     }
 
     // MARK: - Word Count
