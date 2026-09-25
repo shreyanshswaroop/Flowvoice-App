@@ -32,12 +32,25 @@ final class MeetingAudioCaptureService:
     private var systemConverter: AVAudioConverter?
     private var microphoneConverter: AVAudioConverter?
 
-    // Buffers used to combine
-    // microphone + meeting audio.
+    // Buffers used to pair microphone + meeting audio without flattening them
+    // into one noisy mono track.
     private var pendingSystemSamples: [Int16] = []
     private var pendingMicrophoneSamples: [Int16] = []
 
-    private let mixChunkSize = 1600
+    private let mixChunkSize = 1_536
+    private let maxAlignmentLagSamples = 9_600
+    private let minAlignmentOverlapSamples = 6_400
+    private let alignmentSearchStride = 32
+    private let minAlignmentCorrelation = 0.12
+    private let maxLinearEchoGain = 1.25
+    private let doubleTalkResidualRatio = 0.08
+    private let robustGainSegments = 8
+    private let robustGainMinSegments = 3
+
+    private let neuralEchoCanceller = NeuralEchoCanceller()
+
+    private var currentAlignmentLag = 0
+    private var echoGain: Double = 0
 
     // MARK: - Permissions
 
@@ -181,6 +194,9 @@ final class MeetingAudioCaptureService:
 
         pendingSystemSamples = []
         pendingMicrophoneSamples = []
+        currentAlignmentLag = 0
+        echoGain = 0
+        neuralEchoCanceller?.reset()
 
         try await stream.startCapture()
 
@@ -224,6 +240,8 @@ final class MeetingAudioCaptureService:
 
         pendingSystemSamples = []
         pendingMicrophoneSamples = []
+        currentAlignmentLag = 0
+        echoGain = 0
 
         onAudioLevel?(0)
 
@@ -582,127 +600,67 @@ final class MeetingAudioCaptureService:
                 )
         }
 
-        mixAvailableSamples()
+        emitAvailableSamples()
     }
 
-    // MARK: - Mix
+    // MARK: - Emit
 
-    private func mixAvailableSamples() {
+    private func emitAvailableSamples() {
 
         while
             pendingSystemSamples.count >= mixChunkSize
-            ||
+            &&
             pendingMicrophoneSamples.count >= mixChunkSize
         {
 
-            var mixed =
-                [Int16](
-                    repeating: 0,
-                    count: mixChunkSize
+            updateAlignmentIfNeeded()
+
+            guard
+                pendingSystemSamples.count >= mixChunkSize,
+                pendingMicrophoneSamples.count >= mixChunkSize
+            else {
+                return
+            }
+
+            let systemChunk =
+                takeChunk(
+                    from: &pendingSystemSamples,
+                    size: mixChunkSize
                 )
+
+            let microphoneChunk =
+                takeChunk(
+                    from: &pendingMicrophoneSamples,
+                    size: mixChunkSize
+                )
+
+            let cleanedMicrophoneChunk =
+                echoReducedMicrophone(
+                    microphoneChunk,
+                    reference: systemChunk
+                )
+
+            var interleaved = [Int16]()
+
+            interleaved.reserveCapacity(
+                mixChunkSize * 2
+            )
 
             for index in 0..<mixChunkSize {
 
-                let systemSample: Int32
+                // Channel 0: local microphone.
+                interleaved.append(
+                    cleanedMicrophoneChunk[index]
+                )
 
-                if index <
-                    pendingSystemSamples.count {
-
-                    systemSample =
-                        Int32(
-                            pendingSystemSamples[
-                                index
-                            ]
-                        )
-
-                } else {
-
-                    systemSample = 0
-                }
-
-                let microphoneSample: Int32
-
-                if index <
-                    pendingMicrophoneSamples.count {
-
-                    microphoneSample =
-                        Int32(
-                            pendingMicrophoneSamples[
-                                index
-                            ]
-                        )
-
-                } else {
-
-                    microphoneSample = 0
-                }
-
-                // Mix both sources.
-                //
-                // Dividing by 2 prevents
-                // clipping when both are loud.
-
-                let value =
-                    (
-                        systemSample
-                        +
-                        microphoneSample
-                    )
-                    / 2
-
-                let clamped =
-                    max(
-                        Int32(
-                            Int16.min
-                        ),
-                        min(
-                            Int32(
-                                Int16.max
-                            ),
-                            value
-                        )
-                    )
-
-                mixed[index] =
-                    Int16(
-                        clamped
-                    )
-            }
-
-            if pendingSystemSamples.count
-                >= mixChunkSize {
-
-                pendingSystemSamples
-                    .removeFirst(
-                        mixChunkSize
-                    )
-
-            } else {
-
-                pendingSystemSamples
-                    .removeAll(
-                        keepingCapacity: true
-                    )
-            }
-
-            if pendingMicrophoneSamples.count
-                >= mixChunkSize {
-
-                pendingMicrophoneSamples
-                    .removeFirst(
-                        mixChunkSize
-                    )
-
-            } else {
-
-                pendingMicrophoneSamples
-                    .removeAll(
-                        keepingCapacity: true
-                    )
+                // Channel 1: system / meeting audio.
+                interleaved.append(
+                    systemChunk[index]
+                )
             }
 
             let data =
-                mixed.withUnsafeBytes {
+                interleaved.withUnsafeBytes {
                     rawBuffer in
 
                     Data(
@@ -720,6 +678,527 @@ final class MeetingAudioCaptureService:
             }
         }
     }
+
+    private func updateAlignmentIfNeeded() {
+
+        let requiredSamples =
+            maxAlignmentLagSamples
+            + minAlignmentOverlapSamples
+
+        guard
+            pendingSystemSamples.count >= requiredSamples,
+            pendingMicrophoneSamples.count >= requiredSamples
+        else {
+            return
+        }
+
+        let windowSize =
+            min(
+                pendingSystemSamples.count,
+                pendingMicrophoneSamples.count,
+                requiredSamples
+            )
+
+        let systemWindow =
+            Array(
+                pendingSystemSamples
+                    .prefix(
+                        windowSize
+                    )
+            )
+
+        let microphoneWindow =
+            Array(
+                pendingMicrophoneSamples
+                    .prefix(
+                        windowSize
+                    )
+            )
+
+        guard let lag =
+            strongestAlignmentLag(
+                microphone: microphoneWindow,
+                system: systemWindow
+            )
+        else {
+            return
+        }
+
+        guard lag != currentAlignmentLag else {
+            return
+        }
+
+        applyAlignmentLag(
+            lag
+        )
+
+        currentAlignmentLag = lag
+        echoGain = 0
+        neuralEchoCanceller?.reset()
+    }
+
+    private func strongestAlignmentLag(
+        microphone: [Int16],
+        system: [Int16]
+    ) -> Int? {
+
+        var bestLag = currentAlignmentLag
+        var bestCorrelation = 0.0
+
+        let lowerBound =
+            -maxAlignmentLagSamples
+
+        let upperBound =
+            maxAlignmentLagSamples
+
+        for lag in
+            stride(
+                from: lowerBound,
+                through: upperBound,
+                by: alignmentSearchStride
+            )
+        {
+
+            let correlation =
+                alignmentCorrelation(
+                    microphone: microphone,
+                    system: system,
+                    lag: lag
+                )
+
+            if correlation > bestCorrelation {
+                bestCorrelation = correlation
+                bestLag = lag
+            }
+        }
+
+        guard bestCorrelation >= minAlignmentCorrelation else {
+            return nil
+        }
+
+        return bestLag
+    }
+
+    private func alignmentCorrelation(
+        microphone: [Int16],
+        system: [Int16],
+        lag: Int
+    ) -> Double {
+
+        let micStart =
+            max(
+                lag,
+                0
+            )
+
+        let systemStart =
+            max(
+                -lag,
+                0
+            )
+
+        let overlap =
+            min(
+                microphone.count - micStart,
+                system.count - systemStart
+            )
+
+        guard overlap >= minAlignmentOverlapSamples else {
+            return 0
+        }
+
+        var micEnergy = 0.0
+        var systemEnergy = 0.0
+        var crossEnergy = 0.0
+
+        for offset in 0..<overlap {
+
+            let mic =
+                Double(
+                    microphone[
+                        micStart + offset
+                    ]
+                )
+
+            let ref =
+                Double(
+                    system[
+                        systemStart + offset
+                    ]
+                )
+
+            micEnergy += mic * mic
+            systemEnergy += ref * ref
+            crossEnergy += mic * ref
+        }
+
+        guard
+            micEnergy > 0,
+            systemEnergy > 0
+        else {
+            return 0
+        }
+
+        return
+            abs(
+                crossEnergy
+            )
+            /
+            max(
+                sqrt(
+                    micEnergy * systemEnergy
+                ),
+                1
+            )
+    }
+
+    private func applyAlignmentLag(
+        _ lag: Int
+    ) {
+
+        if lag > 0 {
+
+            let samplesToDrop =
+                min(
+                    lag,
+                    pendingMicrophoneSamples.count
+                )
+
+            pendingMicrophoneSamples.removeFirst(
+                samplesToDrop
+            )
+
+            return
+        }
+
+        if lag < 0 {
+
+            let samplesToDrop =
+                min(
+                    -lag,
+                    pendingSystemSamples.count
+                )
+
+            pendingSystemSamples.removeFirst(
+                samplesToDrop
+            )
+        }
+    }
+
+    private func takeChunk(
+        from samples: inout [Int16],
+        size: Int
+    ) -> [Int16] {
+
+        if samples.count >= size {
+
+            let chunk =
+                Array(
+                    samples.prefix(
+                        size
+                    )
+                )
+
+            samples.removeFirst(
+                size
+            )
+
+            return chunk
+        }
+
+        var chunk = samples
+
+        samples.removeAll(
+            keepingCapacity: true
+        )
+
+        if chunk.count < size {
+
+            chunk.append(
+                contentsOf:
+                    repeatElement(
+                        0,
+                        count: size - chunk.count
+                    )
+            )
+        }
+
+        return chunk
+    }
+
+    private func echoReducedMicrophone(
+        _ microphone: [Int16],
+        reference system: [Int16]
+    ) -> [Int16] {
+
+        guard microphone.count == system.count else {
+            return microphone
+        }
+
+        let processedMicrophone =
+            neuralEchoCanceller?.process(
+                microphone: microphone,
+                system: system
+            )
+            ?? microphone
+
+        var micEnergy = 0.0
+        var systemEnergy = 0.0
+        var crossEnergy = 0.0
+
+        for index in processedMicrophone.indices {
+
+            let mic =
+                Double(
+                    processedMicrophone[index]
+                )
+
+            let ref =
+                Double(
+                    system[index]
+                )
+
+            micEnergy += mic * mic
+            systemEnergy += ref * ref
+            crossEnergy += mic * ref
+        }
+
+        let sampleCount =
+            Double(
+                microphone.count
+            )
+
+        let micRms =
+            sqrt(
+                micEnergy / sampleCount
+            )
+
+        let systemRms =
+            sqrt(
+                systemEnergy / sampleCount
+            )
+
+        guard
+            micRms > 120,
+            systemRms > 120
+        else {
+            echoGain *= 0.85
+            return processedMicrophone
+        }
+
+        let correlation =
+            crossEnergy
+            /
+            max(
+                sqrt(
+                    micEnergy * systemEnergy
+                ),
+                1
+            )
+
+        guard abs(correlation) > 0.18 else {
+            echoGain *= 0.85
+            return processedMicrophone
+        }
+
+        let instantaneousGain =
+            min(
+                max(
+                    crossEnergy
+                    /
+                    max(
+                        systemEnergy,
+                        1
+                    ),
+                    -maxLinearEchoGain
+                ),
+                maxLinearEchoGain
+            )
+
+        let residualEnergy =
+            max(
+                micEnergy
+                -
+                (
+                    crossEnergy * crossEnergy
+                    /
+                    max(
+                        systemEnergy,
+                        1
+                    )
+                ),
+                0
+            )
+
+        let residualRatio =
+            sqrt(
+                residualEnergy / sampleCount
+            )
+            /
+            max(
+                micRms,
+                1
+            )
+
+        let measuredGain =
+            residualRatio > doubleTalkResidualRatio
+            ? segmentedTrimmedGain(
+                microphone: processedMicrophone,
+                system: system,
+                initialGain: instantaneousGain
+            )
+            : instantaneousGain
+
+        echoGain =
+            echoGain
+            +
+            (
+                measuredGain
+                - echoGain
+            )
+            * 0.12
+
+        let gain =
+            residualRatio > doubleTalkResidualRatio
+            ? echoGain
+            : measuredGain
+
+        return processedMicrophone.indices.map { index in
+
+            let cleaned =
+                Double(
+                    processedMicrophone[index]
+                )
+                -
+                Double(
+                    system[index]
+                )
+                * gain
+
+            return Int16(
+                max(
+                    Double(
+                        Int16.min
+                    ),
+                    min(
+                        Double(
+                            Int16.max
+                        ),
+                        cleaned
+                    )
+                )
+            )
+        }
+    }
+
+    private func segmentedTrimmedGain(
+        microphone: [Int16],
+        system: [Int16],
+        initialGain: Double
+    ) -> Double {
+
+        let length =
+            min(
+                microphone.count,
+                system.count
+            )
+
+        guard length > 0 else {
+            return initialGain
+        }
+
+        let segmentLength =
+            max(
+                length / robustGainSegments,
+                1
+            )
+
+        var gains: [Double] = []
+        gains.reserveCapacity(
+            robustGainSegments
+        )
+
+        var start = 0
+
+        while start < length {
+
+            let end =
+                min(
+                    start + segmentLength,
+                    length
+                )
+
+            var systemEnergy = 0.0
+            var crossEnergy = 0.0
+
+            for index in start..<end {
+
+                let ref =
+                    Double(
+                        system[index]
+                    )
+
+                let mic =
+                    Double(
+                        microphone[index]
+                    )
+
+                systemEnergy += ref * ref
+                crossEnergy += mic * ref
+            }
+
+            if systemEnergy > 1 {
+
+                let gain =
+                    min(
+                        max(
+                            crossEnergy / systemEnergy,
+                            -maxLinearEchoGain
+                        ),
+                        maxLinearEchoGain
+                    )
+
+                gains.append(
+                    gain
+                )
+            }
+
+            start = end
+        }
+
+        guard gains.count >= robustGainMinSegments else {
+            return initialGain
+        }
+
+        gains.sort()
+
+        let trimCount =
+            gains.count >= 5
+            ? 1
+            : 0
+
+        let trimmed =
+            gains[
+                trimCount..<(gains.count - trimCount)
+            ]
+
+        guard !trimmed.isEmpty else {
+            return initialGain
+        }
+
+        let total =
+            trimmed.reduce(
+                0.0,
+                +
+            )
+
+        return total
+            /
+            Double(
+                trimmed.count
+            )
+    }
+
 
     // MARK: - Level
 

@@ -192,6 +192,36 @@ final class AppWindowManager {
         )
     }
 
+    // MARK: - Bring Main Window To Front
+
+    func bringMainWindowToFront() {
+
+        guard let window = mainWindow else {
+            NSApplication.shared.activate(
+                ignoringOtherApps: true
+            )
+            return
+        }
+
+        restoreNormalWindowBehaviour(
+            window
+        )
+
+        if window.isMiniaturized {
+            window.deminiaturize(
+                nil
+            )
+        }
+
+        window.makeKeyAndOrderFront(
+            nil
+        )
+
+        NSApplication.shared.activate(
+            ignoringOtherApps: true
+        )
+    }
+
     // MARK: - Normal Window Behaviour
 
     private func restoreNormalWindowBehaviour(
@@ -246,8 +276,13 @@ final class AppWindowManager {
     private var mainWindow: NSWindow? {
 
         NSApplication.shared.windows.first {
-            $0.isVisible &&
-            !($0 is NSPanel)
+            window in
+
+            window.canBecomeKey &&
+            !(window is NSPanel) &&
+            !String(describing: type(of: window))
+                .contains("NSStatusBarWindow") &&
+            (window.isVisible || window.isMiniaturized)
         }
     }
 }

@@ -8,17 +8,24 @@ final class FlowVoiceSocket: ObservableObject {
     @Published var statusText = "Disconnected"
 
     @Published var partialTranscript = ""
+    @Published var partialSpeaker: Int?
     @Published var finalTranscript = ""
+    @Published var finalSegmentTranscript = ""
     @Published var finalUtterance = ""
 
     @Published var speakerSegments:
         [NoteSpeakerSegment] = []
+
+    private var speakerSegmentKeys =
+        Set<String>()
 
     private var socketTask:
         URLSessionWebSocketTask?
 
     private var session:
         URLSession?
+
+    private var keepsPartialUntilSpeakerSegment = false
 
     func connect() {
 
@@ -88,7 +95,13 @@ final class FlowVoiceSocket: ObservableObject {
         partialTranscript =
             ""
 
+        partialSpeaker =
+            nil
+
         finalTranscript =
+            ""
+
+        finalSegmentTranscript =
             ""
 
         finalUtterance =
@@ -96,6 +109,10 @@ final class FlowVoiceSocket: ObservableObject {
 
         speakerSegments =
             []
+
+        speakerSegmentKeys.removeAll()
+
+        keepsPartialUntilSpeakerSegment = false
     }
 
     // MARK: - Audio
@@ -153,7 +170,8 @@ final class FlowVoiceSocket: ObservableObject {
     // MARK: - Start Listening With Dictionary
 
     func startListening(
-        keyterms: [String]
+        keyterms: [String],
+        audioMode: String = "dictation"
     ) async {
 
         guard let socketTask else {
@@ -173,7 +191,23 @@ final class FlowVoiceSocket: ObservableObject {
 
                 "keyterms":
                     cleanedKeyterms,
+
+                "audio_mode":
+                    audioMode,
             ]
+
+        finalSegmentTranscript =
+            ""
+
+        partialTranscript =
+            ""
+
+        partialSpeaker =
+            nil
+
+        keepsPartialUntilSpeakerSegment = (
+            audioMode == "meeting_dual_channel"
+        )
 
         do {
 
@@ -290,6 +324,8 @@ final class FlowVoiceSocket: ObservableObject {
 
         speakerSegments =
             []
+
+        speakerSegmentKeys.removeAll()
     }
 
     // MARK: - Receive Loop
@@ -469,6 +505,11 @@ final class FlowVoiceSocket: ObservableObject {
                 ] as? String
                 ?? ""
 
+            partialSpeaker =
+                json[
+                    "speaker"
+                ] as? Int
+
         case "transcript_final":
 
             let text =
@@ -480,8 +521,17 @@ final class FlowVoiceSocket: ObservableObject {
             finalTranscript =
                 text
 
-            partialTranscript =
-                ""
+            finalSegmentTranscript =
+                text
+
+            if !keepsPartialUntilSpeakerSegment {
+
+                partialTranscript =
+                    ""
+
+                partialSpeaker =
+                    nil
+            }
 
         case "utterance_final":
 
@@ -500,6 +550,9 @@ final class FlowVoiceSocket: ObservableObject {
             partialTranscript =
                 ""
 
+            partialSpeaker =
+                nil
+
         case "speaker_segments":
 
             handleSpeakerSegments(
@@ -510,6 +563,9 @@ final class FlowVoiceSocket: ObservableObject {
 
             partialTranscript =
                 ""
+
+            partialSpeaker =
+                nil
 
         case "error":
 
@@ -611,15 +667,89 @@ final class FlowVoiceSocket: ObservableObject {
             return
         }
 
+        let newSegments =
+            decodedSegments.filter {
+                segment in
+
+                let key =
+                    speakerSegmentKey(
+                        segment
+                    )
+
+                guard
+                    !speakerSegmentKeys
+                        .contains(
+                            key
+                        )
+                else {
+                    return false
+                }
+
+                speakerSegmentKeys
+                    .insert(
+                        key
+                    )
+
+                return true
+            }
+
+        guard
+            !newSegments.isEmpty
+        else {
+            return
+        }
+
         speakerSegments.append(
             contentsOf:
-                decodedSegments
+                newSegments
         )
 
         print(
-            "Received speaker segments:",
-            decodedSegments.count
+            "Received new speaker segments:",
+            newSegments.count,
+            "total:",
+            speakerSegments.count
         )
+    }
+
+    // MARK: - Segment Key
+
+    private func speakerSegmentKey(
+        _ segment: NoteSpeakerSegment
+    ) -> String {
+
+        let normalizedText =
+            segment.text
+                .lowercased()
+                .split {
+                    $0.isWhitespace
+                    || $0.isNewline
+                }
+                .joined(
+                    separator: " "
+                )
+
+        let start =
+            segment.start
+                .map {
+                    String(
+                        format: "%.2f",
+                        $0
+                    )
+                }
+            ?? "nil"
+
+        let end =
+            segment.end
+                .map {
+                    String(
+                        format: "%.2f",
+                        $0
+                    )
+                }
+            ?? "nil"
+
+        return "\(segment.speaker)|\(start)|\(end)|\(normalizedText)"
     }
 
     // MARK: - Number Helper

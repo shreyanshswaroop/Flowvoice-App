@@ -572,7 +572,7 @@ private struct LiveNoteSpeakerRow: View {
             spacing: 6
         ) {
 
-            Text("Speaker \(segment.speaker + 1)")
+            Text(segment.displaySpeakerName)
                 .font(
                     .system(
                         size: 11,

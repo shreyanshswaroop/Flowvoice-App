@@ -67,8 +67,19 @@ final class FlowVoiceController: ObservableObject {
     @Published var notePartialTranscript =
         ""
 
+    @Published var notePartialSpeaker: Int?
+
     @Published var noteSpeakerSegments:
         [NoteSpeakerSegment] = []
+
+    private var noteSpeakerSegmentArchive:
+        [NoteSpeakerSegment] = []
+
+    private var noteFinalTranscriptFallbackSegments:
+        [String] = []
+
+    private var noteFinalTranscriptFallbackKeys =
+        Set<String>()
 
     // MARK: - Dictation
 
@@ -220,7 +231,46 @@ final class FlowVoiceController: ObservableObject {
 
         // MARK: Notetaker Partial
 
-        socket.$partialTranscript
+        Publishers.CombineLatest(
+            socket.$partialTranscript,
+            socket.$partialSpeaker
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] text, speaker in
+
+            guard let self else {
+                return
+            }
+
+            guard
+                self.mode == .notetaker
+            else {
+                return
+            }
+
+            let cleaned =
+                text
+                    .trimmingCharacters(
+                        in:
+                            .whitespacesAndNewlines
+                    )
+
+            self.notePartialTranscript =
+                cleaned
+
+            self.notePartialSpeaker =
+                cleaned.isEmpty
+                ? nil
+                : speaker
+        }
+        .store(
+            in: &cancellables
+        )
+
+        // MARK: Notetaker Final Fallback
+
+        socket.$finalSegmentTranscript
+            .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] text in
 
@@ -234,12 +284,49 @@ final class FlowVoiceController: ObservableObject {
                     return
                 }
 
-                self.notePartialTranscript =
-                    text
-                        .trimmingCharacters(
-                            in:
-                                .whitespacesAndNewlines
+                let cleaned =
+                    text.trimmingCharacters(
+                        in:
+                            .whitespacesAndNewlines
+                    )
+
+                guard
+                    !cleaned.isEmpty
+                else {
+                    return
+                }
+
+                let fallbackKey =
+                    self.normalizedTranscriptKey(
+                        cleaned
+                    )
+
+                guard
+                    !self.noteFinalTranscriptFallbackKeys
+                        .contains(
+                            fallbackKey
                         )
+                else {
+                    return
+                }
+
+                self.noteFinalTranscriptFallbackKeys
+                    .insert(
+                        fallbackKey
+                    )
+
+                self.noteFinalTranscriptFallbackSegments
+                    .append(cleaned)
+
+                self.noteTranscript =
+                    self.noteFinalTranscriptFallbackSegments
+                        .joined(separator: " ")
+
+                self.notePartialTranscript =
+                    ""
+
+                self.notePartialSpeaker =
+                    nil
             }
             .store(
                 in: &cancellables
@@ -262,9 +349,12 @@ final class FlowVoiceController: ObservableObject {
                 }
 
                 self.noteSpeakerSegments =
-                    segments
+                    self.mergeSpeakerSegments(
+                        self.noteSpeakerSegmentArchive + segments
+                    )
 
                 self.rebuildNoteTranscript()
+                self.clearSettledNotePartialTranscript()
             }
             .store(
                 in: &cancellables
@@ -781,7 +871,9 @@ final class FlowVoiceController: ObservableObject {
     // MARK: NOTETAKER
     // MARK: ============================================
 
-    func startNotetaker() {
+    func startNotetaker(
+        resuming: Bool = false
+    ) {
 
         guard !isListening else {
             return
@@ -802,16 +894,30 @@ final class FlowVoiceController: ObservableObject {
         isProcessingInsertion =
             false
 
-        noteTranscript =
-            ""
+        if !resuming {
 
-        notePartialTranscript =
-            ""
+            noteTranscript =
+                ""
 
-        noteSpeakerSegments =
-            []
+            notePartialTranscript =
+                ""
 
-        socket.clearSpeakerSegments()
+            notePartialSpeaker =
+                nil
+
+            noteSpeakerSegments =
+                []
+
+            noteSpeakerSegmentArchive =
+                []
+
+            noteFinalTranscriptFallbackSegments =
+                []
+
+            noteFinalTranscriptFallbackKeys.removeAll()
+
+            socket.clearSpeakerSegments()
+        }
 
         audioLevel =
             0
@@ -845,7 +951,10 @@ final class FlowVoiceController: ObservableObject {
                 socket.finalTranscript =
                     ""
 
-                socket.clearSpeakerSegments()
+                if !resuming {
+
+                    socket.clearSpeakerSegments()
+                }
 
                 // --------------------------------
                 // Load Dictionary keyterms.
@@ -858,7 +967,9 @@ final class FlowVoiceController: ObservableObject {
 
                 await socket.startListening(
                     keyterms:
-                        keyterms
+                        keyterms,
+                    audioMode:
+                        "meeting_dual_channel"
                 )
 
                 try? await Task.sleep(
@@ -943,6 +1054,73 @@ final class FlowVoiceController: ObservableObject {
         )
     }
 
+    // MARK: - Pause / Resume Notetaker
+
+    func pauseNotetaker() {
+
+        guard
+            isListening,
+            mode == .notetaker
+        else {
+            return
+        }
+
+        noteSpeakerSegmentArchive =
+            noteSpeakerSegments
+
+        isListening =
+            false
+
+        audioLevel =
+            0
+
+        notePartialTranscript =
+            ""
+
+        notePartialSpeaker =
+            nil
+
+        state =
+            .ready
+
+        shouldInsertOnFinal =
+            false
+
+        pendingFinalUtterance =
+            ""
+
+        isProcessingInsertion =
+            false
+
+        Task {
+
+            await meetingAudioCapture
+                .stop()
+
+            await socket.stopListening()
+
+            socket.clearSpeakerSegments()
+
+            print(
+                "FlowVoice Notetaker paused"
+            )
+        }
+    }
+
+    func resumeNotetaker() {
+
+        guard
+            !isListening,
+            mode == .notetaker
+        else {
+            return
+        }
+
+        startNotetaker(
+            resuming: true
+        )
+    }
+
     private func stopNotetaker(
         disconnectAfterStopping:
             Bool
@@ -970,6 +1148,9 @@ final class FlowVoiceController: ObservableObject {
 
         notePartialTranscript =
             ""
+
+        notePartialSpeaker =
+            nil
 
         state =
             .transcribing
@@ -1033,6 +1214,23 @@ final class FlowVoiceController: ObservableObject {
             "Could not capture meeting audio. Allow FlowVoice in Screen & System Audio Recording and Microphone settings."
     }
 
+    // MARK: - Transcript Key
+
+    private func normalizedTranscriptKey(
+        _ text: String
+    ) -> String {
+
+        text
+            .lowercased()
+            .split {
+                $0.isWhitespace
+                || $0.isNewline
+            }
+            .joined(
+                separator: " "
+            )
+    }
+
     // MARK: - Rebuild Notetaker Transcript
 
     private func rebuildNoteTranscript() {
@@ -1065,18 +1263,390 @@ final class FlowVoiceController: ObservableObject {
                 )
 
         noteTranscript =
-            transcript
+            transcript.isEmpty
+            ? noteFinalTranscriptFallbackSegments
+                .joined(separator: " ")
+            : transcript
 
-        if !transcript.isEmpty {
+        print(
+            "Notetaker diarized transcript updated:",
+            noteSpeakerSegments.count,
+            "segments"
+        )
+    }
+
+    // MARK: - Live Partial Settling
+
+    private func clearSettledNotePartialTranscript() {
+
+        let partial =
+            cleanSegmentText(
+                notePartialTranscript
+            )
+
+        guard
+            !partial.isEmpty,
+            !noteSpeakerSegments.isEmpty
+        else {
+            return
+        }
+
+        let recentCommitted =
+            noteSpeakerSegments
+                .suffix(3)
+                .map { $0.text }
+                .joined(separator: " ")
+
+        let committedKey =
+            normalizedTranscriptKey(
+                recentCommitted
+            )
+
+        let partialKey =
+            normalizedTranscriptKey(
+                partial
+            )
+
+        guard
+            !committedKey.isEmpty,
+            !partialKey.isEmpty
+        else {
+            return
+        }
+
+        let partialIsCommitted =
+            committedKey.contains(
+                partialKey
+            )
+            || isLikelySameAudio(
+                recentCommitted,
+                partial
+            )
+            || isLikelySameAudio(
+                partial,
+                recentCommitted
+            )
+
+        if partialIsCommitted {
 
             notePartialTranscript =
                 ""
+
+            notePartialSpeaker =
+                nil
+        }
+    }
+
+    // MARK: - Speaker Segment Cleanup
+
+    private func mergeSpeakerSegments(
+        _ segments: [NoteSpeakerSegment]
+    ) -> [NoteSpeakerSegment] {
+
+        var merged:
+            [NoteSpeakerSegment] = []
+
+        for segment in segments {
+
+            let text =
+                cleanSegmentText(
+                    segment.text
+                )
+
+            guard
+                !text.isEmpty
+            else {
+                continue
+            }
+
+            let cleanedSegment =
+                NoteSpeakerSegment(
+                    id: segment.id,
+                    speaker: segment.speaker,
+                    text: text,
+                    start: segment.start,
+                    end: segment.end
+                )
+
+            guard
+                let previous = merged.last
+            else {
+                merged.append(
+                    cleanedSegment
+                )
+                continue
+            }
+
+            if previous.speaker != cleanedSegment.speaker,
+               !isLikelySameAudio(
+                    previous.text,
+                    cleanedSegment.text
+               ) {
+
+                merged.append(
+                    cleanedSegment
+                )
+                continue
+            }
+
+            let mergedText =
+                mergeSegmentText(
+                    previous.text,
+                    cleanedSegment.text
+                )
+
+            merged[merged.count - 1] =
+                NoteSpeakerSegment(
+                    id: previous.id,
+                    speaker: previous.speaker,
+                    text: mergedText,
+                    start: previous.start ?? cleanedSegment.start,
+                    end: latestSegmentEnd(
+                        previous.end,
+                        cleanedSegment.end
+                    )
+                )
         }
 
-        print(
-            "Notetaker diarized transcript:",
-            noteTranscript
+        return merged
+    }
+
+    private func cleanSegmentText(
+        _ text: String
+    ) -> String {
+
+        text
+            .split {
+                $0.isWhitespace
+                || $0.isNewline
+            }
+            .joined(
+                separator: " "
+            )
+            .trimmingCharacters(
+                in:
+                    .whitespacesAndNewlines
+            )
+    }
+
+    private func mergeSegmentText(
+        _ previous: String,
+        _ next: String
+    ) -> String {
+
+        let previousWords =
+            normalizedWords(
+                previous
+            )
+
+        let nextWords =
+            normalizedWords(
+                next
+            )
+
+        guard
+            !previousWords.isEmpty,
+            !nextWords.isEmpty
+        else {
+            return cleanSegmentText(
+                previous + " " + next
+            )
+        }
+
+        if previousWords == nextWords {
+            return previous
+        }
+
+        if nextWords.starts(
+            with: previousWords
+        ) {
+            return next
+        }
+
+        if previousWords.starts(
+            with: nextWords
+        ) {
+            return previous
+        }
+
+        let overlap =
+            overlappingWordCount(
+                previousWords,
+                nextWords
+            )
+
+        let nextParts =
+            next.split {
+                $0.isWhitespace
+                || $0.isNewline
+            }
+
+        if overlap > 0,
+           overlap < nextParts.count {
+
+            return cleanSegmentText(
+                previous + " " + nextParts
+                    .dropFirst(overlap)
+                    .joined(separator: " ")
+            )
+        }
+
+        return cleanSegmentText(
+            previous + " " + next
         )
+    }
+
+    private func normalizedWords(
+        _ text: String
+    ) -> [String] {
+
+        text
+            .lowercased()
+            .components(
+                separatedBy:
+                    CharacterSet
+                    .alphanumerics
+                    .inverted
+            )
+            .filter {
+                !$0.isEmpty
+            }
+    }
+
+    private func isLikelySameAudio(
+        _ previous: String,
+        _ next: String
+    ) -> Bool {
+
+        let previousWords =
+            normalizedWords(
+                previous
+            )
+
+        let nextWords =
+            normalizedWords(
+                next
+            )
+
+        guard
+            min(
+                previousWords.count,
+                nextWords.count
+            ) >= 4
+        else {
+            return false
+        }
+
+        if wordSimilarity(
+            previousWords,
+            nextWords
+        ) >= 0.58 {
+            return true
+        }
+
+        let overlap =
+            max(
+                overlappingWordCount(
+                    previousWords,
+                    nextWords
+                ),
+                overlappingWordCount(
+                    nextWords,
+                    previousWords
+                )
+            )
+
+        return overlap >= min(
+            5,
+            min(
+                previousWords.count,
+                nextWords.count
+            )
+        )
+    }
+
+    private func wordSimilarity(
+        _ previous: [String],
+        _ next: [String]
+    ) -> Double {
+
+        let previousSet =
+            Set(previous)
+
+        let nextSet =
+            Set(next)
+
+        let smallerCount =
+            min(
+                previousSet.count,
+                nextSet.count
+            )
+
+        guard smallerCount > 0 else {
+            return 0
+        }
+
+        let sharedCount =
+            previousSet
+                .intersection(
+                    nextSet
+                )
+                .count
+
+        return Double(sharedCount)
+            / Double(smallerCount)
+    }
+
+    private func overlappingWordCount(
+        _ previous: [String],
+        _ next: [String]
+    ) -> Int {
+
+        let maximumOverlap =
+            min(
+                previous.count,
+                next.count
+            )
+
+        guard
+            maximumOverlap > 0
+        else {
+            return 0
+        }
+
+        for count in stride(
+            from: maximumOverlap,
+            through: 1,
+            by: -1
+        ) {
+
+            if Array(previous.suffix(count)) == Array(next.prefix(count)) {
+                return count
+            }
+        }
+
+        return 0
+    }
+
+    private func latestSegmentEnd(
+        _ first: Double?,
+        _ second: Double?
+    ) -> Double? {
+
+        switch (first, second) {
+
+        case let (.some(first), .some(second)):
+            return max(first, second)
+
+        case let (.some(first), .none):
+            return first
+
+        case let (.none, .some(second)):
+            return second
+
+        case (.none, .none):
+            return nil
+        }
     }
 
     // MARK: - Reset Notetaker
@@ -1089,8 +1659,19 @@ final class FlowVoiceController: ObservableObject {
         notePartialTranscript =
             ""
 
+        notePartialSpeaker =
+            nil
+
         noteSpeakerSegments =
             []
+
+        noteSpeakerSegmentArchive =
+            []
+
+        noteFinalTranscriptFallbackSegments =
+            []
+
+        noteFinalTranscriptFallbackKeys.removeAll()
 
         socket.clearSpeakerSegments()
 

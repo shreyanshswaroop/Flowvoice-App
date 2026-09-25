@@ -64,6 +64,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = E18FFB5B303DAA500049038D /* Build configuration list for PBXNativeTarget "flowvoice" */;
 			buildPhases = (
+				E1AEC0013049000000AEC001 /* Build FlowVoice AEC */,
 				E18FFB4C303DAA500049038D /* Sources */,
 				E18FFB4D303DAA500049038D /* Frameworks */,
 				E18FFB4E303DAA500049038D /* Resources */,
@@ -130,6 +131,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		E1AEC0013049000000AEC001 /* Build FlowVoice AEC */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build FlowVoice AEC";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/../../flowvoice-aec/target/release/libflowvoice_aec.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nexport PATH=\"/opt/homebrew/bin:$PATH\"\ncd \"$SRCROOT/../../flowvoice-aec\"\ncargo build --release\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		E18FFB4C303DAA500049038D /* Sources */ = {
@@ -275,7 +299,12 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../../flowvoice-aec/include",
+				);
 				INFOPLIST_FILE = flowvoice/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "FlowVoice needs microphone access to transcribe your speech.";
@@ -284,6 +313,21 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-force_load",
+					"$(SRCROOT)/../../flowvoice-aec/target/release/libflowvoice_aec.a",
+					"-lc++",
+					"-lz",
+					"-framework",
+					Accelerate,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					Foundation,
+					"-framework",
+					Security,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = flow.flowvoice;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -291,6 +335,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "flowvoice/FlowVoice-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -309,7 +354,12 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../../flowvoice-aec/include",
+				);
 				INFOPLIST_FILE = flowvoice/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "FlowVoice needs microphone access to transcribe your speech.";
@@ -318,6 +368,21 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-force_load",
+					"$(SRCROOT)/../../flowvoice-aec/target/release/libflowvoice_aec.a",
+					"-lc++",
+					"-lz",
+					"-framework",
+					Accelerate,
+					"-framework",
+					CoreFoundation,
+					"-framework",
+					Foundation,
+					"-framework",
+					Security,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = flow.flowvoice;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -325,6 +390,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "flowvoice/FlowVoice-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};

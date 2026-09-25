@@ -19,11 +19,396 @@ from app.services.utterance_manager import (
 router = APIRouter()
 
 
+# MARK: - Transcript De-duplication
+
+def normalize_transcript_text(
+    value: str,
+) -> str:
+
+    return " ".join(
+        value
+        .strip()
+        .lower()
+        .split()
+    )
+
+
+def normalized_transcript_words(
+    value: str,
+) -> list[str]:
+
+    normalized = []
+    current = []
+
+    for character in value.lower():
+
+        if character.isalnum():
+            current.append(
+                character
+            )
+            continue
+
+        if current:
+            normalized.append(
+                "".join(
+                    current
+                )
+            )
+            current = []
+
+    if current:
+        normalized.append(
+            "".join(
+                current
+            )
+        )
+
+    return normalized
+
+
+def word_overlap_count(
+    first: list[str],
+    second: list[str],
+) -> int:
+
+    maximum = min(
+        len(first),
+        len(second),
+    )
+
+    for count in range(
+        maximum,
+        0,
+        -1,
+    ):
+
+        if first[-count:] == second[:count]:
+            return count
+
+    return 0
+
+
+def word_similarity(
+    first: list[str],
+    second: list[str],
+) -> float:
+
+    if not first or not second:
+        return 0.0
+
+    first_set = set(
+        first
+    )
+
+    second_set = set(
+        second
+    )
+
+    shared = len(
+        first_set
+        & second_set
+    )
+
+    smaller = min(
+        len(first_set),
+        len(second_set),
+    )
+
+    if smaller == 0:
+        return 0.0
+
+    return shared / smaller
+
+
+def looks_like_same_audio(
+    first: list[str],
+    second: list[str],
+) -> bool:
+
+    if min(len(first), len(second)) < 4:
+        return False
+
+    if word_similarity(first, second) >= 0.58:
+        return True
+
+    overlap = max(
+        word_overlap_count(
+            first,
+            second,
+        ),
+        word_overlap_count(
+            second,
+            first,
+        ),
+    )
+
+    return overlap >= min(
+        5,
+        min(len(first), len(second)),
+    )
+
+
+def is_redundant_audio_segment(
+    previous: list[str],
+    incoming: list[str],
+) -> bool:
+
+    if not previous or not incoming:
+        return False
+
+    if previous == incoming:
+        return True
+
+    if len(incoming) <= len(previous):
+
+        for index in range(
+            0,
+            len(previous) - len(incoming) + 1,
+        ):
+
+            if previous[index:index + len(incoming)] == incoming:
+                return True
+
+    return (
+        len(incoming) <= 8
+        and word_similarity(previous, incoming) >= 0.7
+    )
+
+
+def split_interleaved_stereo_i16(
+    audio: bytes,
+) -> tuple[bytes, bytes]:
+
+    frame_size = 4
+
+    usable_length = (
+        len(audio)
+        - (len(audio) % frame_size)
+    )
+
+    microphone = bytearray(
+        usable_length // 2
+    )
+
+    system = bytearray(
+        usable_length // 2
+    )
+
+    mic_offset = 0
+    system_offset = 0
+
+    for offset in range(
+        0,
+        usable_length,
+        frame_size,
+    ):
+
+        microphone[mic_offset:mic_offset + 2] = (
+            audio[offset:offset + 2]
+        )
+
+        system[system_offset:system_offset + 2] = (
+            audio[offset + 2:offset + 4]
+        )
+
+        mic_offset += 2
+        system_offset += 2
+
+    return (
+        bytes(microphone),
+        bytes(system),
+    )
+
+
+def has_voice_energy(
+    audio: bytes,
+) -> bool:
+
+    usable_length = (
+        len(audio)
+        - (len(audio) % 2)
+    )
+
+    if usable_length <= 0:
+        return False
+
+    sample_count = 0
+    square_sum = 0
+    peak = 0
+
+    for offset in range(
+        0,
+        usable_length,
+        2,
+    ):
+
+        sample = int.from_bytes(
+            audio[offset:offset + 2],
+            byteorder="little",
+            signed=True,
+        )
+
+        magnitude = abs(
+            sample
+        )
+
+        peak = max(
+            peak,
+            magnitude,
+        )
+
+        square_sum += (
+            sample
+            * sample
+        )
+
+        sample_count += 1
+
+    if sample_count == 0:
+        return False
+
+    rms = (
+        square_sum
+        / sample_count
+    ) ** 0.5
+
+    return (
+        rms >= 90
+        or peak >= 650
+    )
+
+
+def audio_rms(
+    audio: bytes,
+) -> float:
+
+    usable_length = (
+        len(audio)
+        - (len(audio) % 2)
+    )
+
+    if usable_length <= 0:
+        return 0.0
+
+    sample_count = 0
+    square_sum = 0
+
+    for offset in range(
+        0,
+        usable_length,
+        2,
+    ):
+
+        sample = int.from_bytes(
+            audio[offset:offset + 2],
+            byteorder="little",
+            signed=True,
+        )
+
+        square_sum += (
+            sample
+            * sample
+        )
+
+        sample_count += 1
+
+    if sample_count == 0:
+        return 0.0
+
+    return (
+        square_sum
+        / sample_count
+    ) ** 0.5
+
+
+def system_audio_is_primary(
+    microphone_audio: bytes,
+    system_audio: bytes,
+) -> bool:
+
+    system_level = audio_rms(
+        system_audio
+    )
+
+    if system_level < 90:
+        return False
+
+    microphone_level = audio_rms(
+        microphone_audio
+    )
+
+    return (
+        system_level >= microphone_level * 0.55
+        or system_level >= 180
+    )
+
+
+def word_window_key(
+    words: list[dict],
+) -> tuple | None:
+
+    if not words:
+        return None
+
+    cleaned_words = []
+
+    for word in words:
+
+        value = (
+            word.get(
+                "word"
+            )
+            or word.get(
+                "punctuated_word"
+            )
+            or ""
+        )
+
+        value = normalize_transcript_text(
+            str(value)
+        )
+
+        if value:
+            cleaned_words.append(
+                value
+            )
+
+    if not cleaned_words:
+        return None
+
+    start = words[0].get(
+        "start"
+    )
+
+    end = words[-1].get(
+        "end"
+    )
+
+    rounded_start = (
+        round(float(start), 2)
+        if isinstance(start, (int, float))
+        else None
+    )
+
+    rounded_end = (
+        round(float(end), 2)
+        if isinstance(end, (int, float))
+        else None
+    )
+
+    return (
+        rounded_start,
+        rounded_end,
+        tuple(cleaned_words),
+    )
+
+
 # MARK: - Speaker Segments
 
 
 def build_speaker_segments(
     words: list[dict],
+    speaker_offset: int = 0,
 ) -> list[dict]:
 
     if not words:
@@ -86,7 +471,7 @@ def build_speaker_segments(
                 segments.append(
                     {
                         "speaker":
-                            current_speaker,
+                            current_speaker + speaker_offset,
 
                         "text":
                             " ".join(
@@ -126,7 +511,7 @@ def build_speaker_segments(
         segments.append(
             {
                 "speaker":
-                    current_speaker,
+                    current_speaker + speaker_offset,
 
                 "text":
                     " ".join(
@@ -230,9 +615,19 @@ async def voice_websocket(
         None
     )
 
-    transcript_task: (
-        asyncio.Task | None
-    ) = None
+    speaker_stt: DeepgramSTT | None = (
+        None
+    )
+
+    live_system_stt: DeepgramSTT | None = (
+        None
+    )
+
+    active_audio_mode = "dictation"
+
+    transcript_tasks: (
+        list[asyncio.Task]
+    ) = []
 
     utterance_manager = (
         UtteranceManager()
@@ -245,6 +640,19 @@ async def voice_websocket(
     finalize_timeout_task: (
         asyncio.Task | None
     ) = None
+
+
+    sent_final_transcript_keys = (
+        set()
+    )
+
+    sent_speaker_window_keys = (
+        set()
+    )
+
+    visible_speaker_by_channel = {}
+
+    recent_channel_segments = []
 
     # MARK: - Safe Send
 
@@ -368,18 +776,24 @@ async def voice_websocket(
 
     # MARK: - Receive Deepgram
 
-    async def receive_transcripts():
+    async def receive_transcripts(
+        stt_source: DeepgramSTT,
+        fixed_speaker: int | None = None,
+        emit_transcript_events: bool = True,
+        emit_partial_events: bool = True,
+        emit_speaker_segments: bool = True,
+        speaker_offset: int = 0,
+    ):
 
-        nonlocal stt
         nonlocal waiting_for_finalize
 
-        if stt is None:
+        if stt_source is None:
             return
 
         try:
 
             async for result in (
-                stt.receive()
+                stt_source.receive()
             ):
 
                 if not isinstance(
@@ -450,72 +864,191 @@ async def voice_websocket(
                     )
                 )
 
-                print(
-                    f"Transcript: {transcript} "
-                    f"| final: {is_final} "
-                    f"| speech_final: {speech_final} "
-                    f"| from_finalize: {from_finalize} "
-                    f"| words: {len(words)}"
-                )
+                if is_final or speech_final or from_finalize:
+
+                    print(
+                        f"Transcript event "
+                        f"| final: {is_final} "
+                        f"| speech_final: {speech_final} "
+                        f"| from_finalize: {from_finalize} "
+                        f"| words: {len(words)}"
+                    )
 
                 # MARK: Transcript Events
 
                 if transcript:
 
-                    if is_final:
+                    transcript_key = (
+                        normalize_transcript_text(
+                            transcript
+                        )
+                        if is_final
+                        else None
+                    )
+
+                    should_send_transcript = (
+                        (
+                            emit_partial_events
+                            and not is_final
+                        )
+                        or (
+                            emit_transcript_events
+                            and is_final
+                            and transcript_key
+                            and transcript_key
+                            not in sent_final_transcript_keys
+                        )
+                    )
+
+                    if emit_transcript_events and is_final and transcript_key:
+
+                        sent_final_transcript_keys.add(
+                            transcript_key
+                        )
 
                         utterance_manager.add_final_segment(
                             transcript
                         )
 
-                    sent = (
-                        await safely_send_json(
-                            {
-                                "type":
-                                    (
-                                        "transcript_final"
-                                        if is_final
-                                        else
-                                        "transcript_partial"
-                                    ),
+                    if should_send_transcript:
 
-                                "text":
-                                    transcript,
+                        sent = (
+                            await safely_send_json(
+                                {
+                                    "type":
+                                        (
+                                            "transcript_final"
+                                            if is_final
+                                            else "transcript_partial"
+                                        ),
 
-                                "is_final":
-                                    is_final,
+                                    "text":
+                                        transcript,
 
-                                "speech_final":
-                                    speech_final,
+                                    "is_final":
+                                        is_final,
 
-                                "from_finalize":
-                                    from_finalize,
-                            }
+                                    "speech_final":
+                                        speech_final,
+
+                                    "from_finalize":
+                                        from_finalize,
+
+                                    "speaker":
+                                        (
+                                            fixed_speaker
+                                            if fixed_speaker is not None
+                                            else speaker_offset
+                                        ),
+                                }
+                            )
                         )
-                    )
 
-                    if not sent:
-                        break
+                        if not sent:
+                            break
 
-                # MARK: Speaker Diarization
+                # MARK: Channel-owned Speaker Segment
 
                 if (
-                    is_final
-                    and words
+                    emit_speaker_segments
+                    and fixed_speaker is not None
+                    and is_final
+                    and transcript
                 ):
 
-                    speaker_segments = (
-                        build_speaker_segments(
-                            words
+                    transcript_words = (
+                        normalized_transcript_words(
+                            transcript
                         )
                     )
 
-                    if speaker_segments:
+                    matched_segment = None
 
-                        print(
-                            "Speaker segments:",
-                            speaker_segments,
+                    for recent_segment in reversed(
+                        recent_channel_segments
+                    ):
+
+                        if (
+                            recent_segment["channel"]
+                            == fixed_speaker
+                        ):
+                            continue
+
+                        if looks_like_same_audio(
+                            recent_segment["words"],
+                            transcript_words,
+                        ):
+
+                            matched_segment = recent_segment
+                            break
+
+                    if matched_segment is not None:
+
+                        visible_speaker = matched_segment[
+                            "speaker"
+                        ]
+
+                        if is_redundant_audio_segment(
+                            matched_segment["words"],
+                            transcript_words,
+                        ):
+                            continue
+
+                    else:
+
+                        visible_speaker = (
+                            visible_speaker_by_channel
+                            .setdefault(
+                                fixed_speaker,
+                                len(
+                                    visible_speaker_by_channel
+                                ),
+                            )
                         )
+
+                    segment_key = (
+                        visible_speaker,
+                        normalize_transcript_text(
+                            transcript
+                        ),
+                    )
+
+                    if segment_key not in sent_speaker_window_keys:
+
+                        sent_speaker_window_keys.add(
+                            segment_key
+                        )
+
+                        recent_channel_segments.append(
+                            {
+                                "channel":
+                                    fixed_speaker,
+
+                                "speaker":
+                                    visible_speaker,
+
+                                "words":
+                                    transcript_words,
+                            }
+                        )
+
+                        del recent_channel_segments[:-24]
+
+                        start = result.get(
+                            "start"
+                        )
+
+                        duration = result.get(
+                            "duration"
+                        )
+
+                        end = None
+
+                        if isinstance(start, (int, float)):
+                            end = start
+
+                            if isinstance(duration, (int, float)):
+                                end = start + duration
 
                         sent = (
                             await safely_send_json(
@@ -524,13 +1057,85 @@ async def voice_websocket(
                                         "speaker_segments",
 
                                     "segments":
-                                        speaker_segments,
+                                        [
+                                            {
+                                                "speaker":
+                                                    visible_speaker,
+
+                                                "text":
+                                                    transcript,
+
+                                                "start":
+                                                    start,
+
+                                                "end":
+                                                    end,
+                                            }
+                                        ],
                                 }
                             )
                         )
 
                         if not sent:
                             break
+
+                # MARK: Speaker Diarization
+
+                if (
+                    emit_speaker_segments
+                    and fixed_speaker is None
+                    and is_final
+                    and words
+                ):
+
+                    speaker_window_key = (
+                        word_window_key(
+                            words
+                        )
+                    )
+
+                    should_send_speaker_segments = (
+                        speaker_window_key is None
+                        or speaker_window_key
+                        not in sent_speaker_window_keys
+                    )
+
+                    if should_send_speaker_segments:
+
+                        speaker_segments = (
+                            build_speaker_segments(
+                                words,
+                                speaker_offset=speaker_offset,
+                            )
+                        )
+
+                        if speaker_segments:
+
+                            if speaker_window_key is not None:
+
+                                sent_speaker_window_keys.add(
+                                    speaker_window_key
+                                )
+
+                            print(
+                                "Speaker segment batch:",
+                                len(speaker_segments),
+                            )
+
+                            sent = (
+                                await safely_send_json(
+                                    {
+                                        "type":
+                                            "speaker_segments",
+
+                                        "segments":
+                                            speaker_segments,
+                                    }
+                                )
+                            )
+
+                            if not sent:
+                                break
 
                 # MARK: Finish Utterance
 
@@ -552,10 +1157,7 @@ async def voice_websocket(
                 if utterance is not None:
 
                     print(
-                        "Utterance:",
-                        utterance[
-                            "text"
-                        ],
+                        "Utterance finalized"
                     )
 
                     sent = (
@@ -582,7 +1184,10 @@ async def voice_websocket(
 
                 # MARK: Finalize Completed
 
-                if waiting_for_finalize:
+                if (
+                    waiting_for_finalize
+                    and fixed_speaker is None
+                ):
 
                     await finish_dictation()
 
@@ -603,17 +1208,28 @@ async def voice_websocket(
 
     async def start_stt(
         keyterms: list[str] | None = None,
+        audio_mode: str = "dictation",
     ):
 
         nonlocal stt
-        nonlocal transcript_task
+        nonlocal speaker_stt
+        nonlocal live_system_stt
+        nonlocal active_audio_mode
+        nonlocal transcript_tasks
         nonlocal waiting_for_finalize
         nonlocal finalize_timeout_task
+        nonlocal sent_final_transcript_keys
+        nonlocal sent_speaker_window_keys
 
         if stt is not None:
             return
 
         utterance_manager.reset()
+
+        sent_final_transcript_keys.clear()
+        sent_speaker_window_keys.clear()
+        visible_speaker_by_channel.clear()
+        recent_channel_segments.clear()
 
         waiting_for_finalize = (
             False
@@ -636,20 +1252,107 @@ async def voice_websocket(
             )
         )
 
+        if audio_mode not in {
+            "dictation",
+            "meeting_dual_channel",
+        }:
+
+            audio_mode = "dictation"
+
+        active_audio_mode = audio_mode
         stt = DeepgramSTT()
+
+        if audio_mode == "meeting_dual_channel":
+            speaker_stt = DeepgramSTT()
+            live_system_stt = DeepgramSTT()
+        else:
+            speaker_stt = None
+            live_system_stt = None
 
         try:
 
             await stt.connect(
                 keyterms=
-                    cleaned_keyterms
+                    cleaned_keyterms,
+                audio_mode=
+                    audio_mode,
+                diarize=(
+                    audio_mode != "meeting_dual_channel"
+                ),
             )
 
-            transcript_task = (
-                asyncio.create_task(
-                    receive_transcripts()
+            if speaker_stt is not None:
+
+                await speaker_stt.connect(
+                    keyterms=
+                        cleaned_keyterms,
+                    audio_mode=
+                        audio_mode,
+                    diarize=True,
                 )
-            )
+
+            if live_system_stt is not None:
+
+                await live_system_stt.connect(
+                    keyterms=
+                        cleaned_keyterms,
+                    audio_mode=
+                        audio_mode,
+                    diarize=False,
+                )
+
+            transcript_tasks = []
+
+            if audio_mode == "meeting_dual_channel":
+
+                transcript_tasks.append(
+                    asyncio.create_task(
+                        receive_transcripts(
+                            stt,
+                            fixed_speaker=0,
+                            emit_transcript_events=False,
+                            emit_partial_events=True,
+                        )
+                    )
+                )
+
+                if live_system_stt is not None:
+
+                    transcript_tasks.append(
+                        asyncio.create_task(
+                            receive_transcripts(
+                                live_system_stt,
+                                fixed_speaker=1,
+                                emit_transcript_events=False,
+                                emit_partial_events=True,
+                                emit_speaker_segments=False,
+                            )
+                        )
+                    )
+
+                if speaker_stt is not None:
+
+                    transcript_tasks.append(
+                        asyncio.create_task(
+                            receive_transcripts(
+                                speaker_stt,
+                                fixed_speaker=None,
+                                emit_transcript_events=False,
+                                emit_partial_events=False,
+                                speaker_offset=1,
+                            )
+                        )
+                    )
+
+            else:
+
+                transcript_tasks.append(
+                    asyncio.create_task(
+                        receive_transcripts(
+                            stt
+                        )
+                    )
+                )
 
             await safely_send_json(
                 {
@@ -696,6 +1399,9 @@ async def voice_websocket(
             )
 
             stt = None
+            speaker_stt = None
+            live_system_stt = None
+            transcript_tasks = []
 
             await safely_send_json(
                 {
@@ -716,7 +1422,10 @@ async def voice_websocket(
     ):
 
         nonlocal stt
-        nonlocal transcript_task
+        nonlocal speaker_stt
+        nonlocal live_system_stt
+        nonlocal active_audio_mode
+        nonlocal transcript_tasks
         nonlocal waiting_for_finalize
         nonlocal finalize_timeout_task
 
@@ -739,18 +1448,25 @@ async def voice_websocket(
             asyncio.current_task()
         )
 
-        if (
-            transcript_task
-            is not None
-            and transcript_task
-            is not current_task
-        ):
+        tasks_to_cancel = list(
+            transcript_tasks
+        )
 
-            transcript_task.cancel()
+        for task in tasks_to_cancel:
+
+            if task is current_task:
+                continue
+
+            task.cancel()
+
+        for task in tasks_to_cancel:
+
+            if task is current_task:
+                continue
 
             try:
 
-                await transcript_task
+                await task
 
             except asyncio.CancelledError:
 
@@ -763,21 +1479,26 @@ async def voice_websocket(
                     exc,
                 )
 
-        transcript_task = None
+        transcript_tasks = []
 
-        target_stt = (
-            stt_to_close
-            or stt
+        targets = (
+            [stt_to_close]
+            if stt_to_close is not None
+            else [stt, speaker_stt, live_system_stt]
         )
 
-        if (
-            target_stt is not None
-            and target_stt is stt
-        ):
-
+        if stt_to_close is None:
+            stt = None
+            speaker_stt = None
+            live_system_stt = None
+            active_audio_mode = "dictation"
+        elif stt_to_close is stt:
             stt = None
 
-        if target_stt is not None:
+        for target_stt in targets:
+
+            if target_stt is None:
+                continue
 
             if close_stream:
 
@@ -848,6 +1569,12 @@ async def voice_websocket(
         try:
 
             await stt.finalize()
+
+            if speaker_stt is not None:
+                await speaker_stt.finalize()
+
+            if live_system_stt is not None:
+                await live_system_stt.finalize()
 
         except Exception as exc:
 
@@ -968,9 +1695,25 @@ async def voice_websocket(
                             )
                         )
 
+                        audio_mode = (
+                            payload.get(
+                                "audio_mode",
+                                "dictation",
+                            )
+                        )
+
+                        if not isinstance(
+                            audio_mode,
+                            str,
+                        ):
+
+                            audio_mode = "dictation"
+
                         await start_stt(
                             keyterms=
-                                keyterms
+                                keyterms,
+                            audio_mode=
+                                audio_mode
                         )
 
                         continue
@@ -1024,9 +1767,61 @@ async def voice_websocket(
                 and not waiting_for_finalize
             ):
 
-                await stt.send_audio(
-                    audio
-                )
+                if (
+                    active_audio_mode == "meeting_dual_channel"
+                    and speaker_stt is not None
+                ):
+
+                    microphone_audio, system_audio = (
+                        split_interleaved_stereo_i16(
+                            audio
+                        )
+                    )
+
+                    system_has_voice = has_voice_energy(
+                        system_audio
+                    )
+
+                    microphone_has_voice = has_voice_energy(
+                        microphone_audio
+                    )
+
+                    system_level = audio_rms(
+                        system_audio
+                    )
+
+                    microphone_level = audio_rms(
+                        microphone_audio
+                    )
+
+                    if system_has_voice:
+
+                        if live_system_stt is not None:
+                            await live_system_stt.send_audio(
+                                system_audio
+                            )
+
+                        await speaker_stt.send_audio(
+                            system_audio
+                        )
+
+                    if (
+                        microphone_has_voice
+                        and (
+                            not system_has_voice
+                            or microphone_level >= system_level * 1.85
+                        )
+                    ):
+
+                        await stt.send_audio(
+                            microphone_audio
+                        )
+
+                else:
+
+                    await stt.send_audio(
+                        audio
+                    )
 
     except WebSocketDisconnect:
 

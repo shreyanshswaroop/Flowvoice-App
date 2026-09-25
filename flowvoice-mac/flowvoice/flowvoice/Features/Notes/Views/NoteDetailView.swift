@@ -313,7 +313,7 @@ struct NoteDetailView: View {
                         let startsSpeaker = index == 0 || filteredSegments[index - 1].speaker != segment.speaker
                         if startsSpeaker {
                             HStack(spacing: 10) {
-                                Text("Speaker \(segment.speaker + 1)")
+                                Text(segment.displaySpeakerName)
                                     .font(.system(size: 14, weight: .medium))
                                 if let start = segment.start {
                                     Text(formattedTimestamp(start))
@@ -461,7 +461,7 @@ struct NoteDetailView: View {
         guard !currentNote.segments.isEmpty else { return currentNote.transcript }
         return currentNote.segments.map { segment in
             let timestamp = segment.start.map { " [\(formattedTimestamp($0))]" } ?? ""
-            return "Speaker \(segment.speaker + 1)\(timestamp)\n\(segment.text)"
+            return "\(segment.displaySpeakerName)\(timestamp)\n\(segment.text)"
         }.joined(separator: "\n\n")
     }
 

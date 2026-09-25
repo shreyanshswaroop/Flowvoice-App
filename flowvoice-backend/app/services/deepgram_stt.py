@@ -37,6 +37,10 @@ class DeepgramSTT:
         self,
         keyterms:
             list[str] | None = None,
+        audio_mode:
+            str = "dictation",
+        diarize:
+            bool | None = None,
     ):
 
         # Deepgram Nova-3 supports
@@ -92,6 +96,25 @@ class DeepgramSTT:
             cleaned_keyterms[:100]
         )
 
+        is_meeting_dual_channel = (
+            audio_mode
+            == "meeting_dual_channel"
+        )
+
+        channel_count = "1"
+
+        should_diarize = (
+            diarize
+            if diarize is not None
+            else not is_meeting_dual_channel
+        )
+
+        endpointing_ms = (
+            "80"
+            if is_meeting_dual_channel
+            else "150"
+        )
+
         query_items = [
             (
                 "model",
@@ -111,7 +134,7 @@ class DeepgramSTT:
             ),
             (
                 "channels",
-                "1",
+                channel_count,
             ),
             (
                 "smart_format",
@@ -123,11 +146,11 @@ class DeepgramSTT:
             ),
             (
                 "endpointing",
-                "300",
+                endpointing_ms,
             ),
             (
                 "diarize",
-                "true",
+                "true" if should_diarize else "false",
             ),
         ]
 

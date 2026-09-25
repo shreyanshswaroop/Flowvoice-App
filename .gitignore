@@ -9,3 +9,5 @@ xcuserdata/
 
 .venv/
 venv/
+
+/flowvoice-aec/target/

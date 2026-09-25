@@ -4,6 +4,7 @@ import time
 class UtteranceManager:
     def __init__(self):
         self.final_segments: list[str] = []
+        self.final_segment_keys: set[str] = set()
         self.started_at: float | None = None
 
     def start(self):
@@ -19,7 +20,20 @@ class UtteranceManager:
         if not cleaned:
             return
 
+        key = " ".join(
+            cleaned
+            .lower()
+            .split()
+        )
+
+        if key in self.final_segment_keys:
+            return
+
         self.start()
+
+        self.final_segment_keys.add(
+            key
+        )
 
         self.final_segments.append(
             cleaned

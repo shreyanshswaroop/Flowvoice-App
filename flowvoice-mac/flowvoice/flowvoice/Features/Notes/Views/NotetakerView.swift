@@ -39,6 +39,9 @@ struct NotetakerView: View {
     @State private var isRecording =
         false
 
+    @State private var isRecordingPaused =
+        false
+
     @State private var startedAt:
         Date?
 
@@ -62,9 +65,11 @@ struct NotetakerView: View {
 
     @State private var showingLiveNote = false
     @State private var liveThoughts = ""
-    @State private var transcriptCollapsed = false
     @State private var liveSearchVisible = false
     @State private var liveSearch = ""
+    @FocusState private var liveSearchFocused: Bool
+    @State private var edgeOverlayController:
+        NotetakerEdgeOverlayWindowController?
 
     @State private var pendingNoteDraft:
         PendingNoteDraft?
@@ -1295,7 +1300,7 @@ struct NotetakerView: View {
                     )
 
                 Text(
-                    "\(segment.speaker + 1)"
+                    segment.displaySpeakerInitial
                 )
                 .font(
                     .system(
@@ -1322,7 +1327,7 @@ struct NotetakerView: View {
                 ) {
 
                     Text(
-                        "Speaker \(segment.speaker + 1)"
+                        segment.displaySpeakerName
                     )
                     .font(
                         .custom(
@@ -1389,6 +1394,16 @@ struct NotetakerView: View {
 
     // MARK: - Partial Transcript
 
+    private var partialSpeakerSegment: NoteSpeakerSegment {
+
+        NoteSpeakerSegment(
+            speaker: controller.notePartialSpeaker ?? 1,
+            text: controller.notePartialTranscript,
+            start: nil,
+            end: nil
+        )
+    }
+
     private var partialTranscriptRow:
         some View {
 
@@ -1401,26 +1416,32 @@ struct NotetakerView: View {
 
                 Circle()
                     .fill(
-                        FlowVoiceTheme.selectedSurface
+                        speakerColor(
+                            partialSpeakerSegment.speaker
+                        )
+                        .opacity(
+                            0.12
+                        )
                     )
                     .frame(
                         width: 30,
                         height: 30
                     )
 
-                Image(
-                    systemName:
-                        "waveform"
+                Text(
+                    partialSpeakerSegment.displaySpeakerInitial
                 )
                 .font(
                     .system(
                         size: 11,
                         weight:
-                            .medium
+                            .semibold
                     )
                 )
                 .foregroundStyle(
-                    FlowVoiceTheme.tertiaryText
+                    speakerColor(
+                        partialSpeakerSegment.speaker
+                    )
                 )
             }
 
@@ -1430,7 +1451,7 @@ struct NotetakerView: View {
             ) {
 
                 Text(
-                    "Listening..."
+                    partialSpeakerSegment.displaySpeakerName
                 )
                 .font(
                     .custom(
@@ -1438,11 +1459,13 @@ struct NotetakerView: View {
                         size: 10
                     )
                     .weight(
-                        .medium
+                        .semibold
                     )
                 )
                 .foregroundStyle(
-                    FlowVoiceTheme.tertiaryText
+                    speakerColor(
+                        partialSpeakerSegment.speaker
+                    )
                 )
 
                 Text(
@@ -1968,36 +1991,53 @@ struct NotetakerView: View {
         isRecording =
             true
 
-        startTimer()
+        isRecordingPaused =
+            false
+
+        startTimer(
+            resetElapsed: true
+        )
 
         controller
             .startNotetaker()
 
         liveThoughts = ""
-        transcriptCollapsed = false
         liveSearchVisible = false
         liveSearch = ""
         showingLiveNote = true
         menuNote = nil
+
+        ensureEdgeOverlayController()
+            .begin()
     }
 
     // MARK: - Finish For Review
 
     private func finishNoteForReview() {
 
-        guard isRecording,
-              !isFinalizing
+        guard
+            isRecording,
+            !isFinalizing
         else {
             return
         }
 
         stopTimer()
 
-        controller
-            .stopNotetaker()
+        if !isRecordingPaused {
+
+            controller
+                .stopNotetaker()
+        }
 
         isRecording =
             false
+
+        isRecordingPaused =
+            false
+
+        edgeOverlayController?
+            .end()
 
         isFinalizing =
             true
@@ -2006,18 +2046,7 @@ struct NotetakerView: View {
             nil
 
         let duration =
-            startedAt.map {
-
-                max(
-                    0,
-                    Int(
-                        Date()
-                            .timeIntervalSince(
-                                $0
-                            )
-                    )
-                )
-            }
+            elapsedSeconds
 
         startedAt =
             nil
@@ -2184,8 +2213,34 @@ struct NotetakerView: View {
         controller
             .resetNotetaker()
 
+        edgeOverlayController?
+            .end()
+
+        edgeOverlayController =
+            nil
+
         showingLiveNote = false
         liveThoughts = ""
+    }
+
+    private func ensureEdgeOverlayController()
+        -> NotetakerEdgeOverlayWindowController {
+
+        if let edgeOverlayController {
+            return edgeOverlayController
+        }
+
+        let created =
+            NotetakerEdgeOverlayWindowController(
+                controller: controller,
+                title: $title,
+                elapsedSeconds: $elapsedSeconds
+            )
+
+        edgeOverlayController =
+            created
+
+        return created
     }
 
     // MARK: - Live Note Page
@@ -2235,15 +2290,56 @@ struct NotetakerView: View {
 
                     VStack(spacing: 0) {
                         HStack {
-                            Button {
-                                liveSearchVisible.toggle()
-                                if !liveSearchVisible { liveSearch = "" }
-                            } label: {
-                                Image(systemName: "magnifyingglass").frame(width: 30, height: 30)
+                            if liveSearchVisible {
+
+                                HStack(spacing: 8) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.system(size: 13, weight: .medium))
+
+                                    TextField("Search transcript", text: $liveSearch)
+                                        .textFieldStyle(.plain)
+                                        .focused($liveSearchFocused)
+
+                                    Button {
+                                        liveSearchVisible = false
+                                        liveSearch = ""
+                                        liveSearchFocused = false
+                                    } label: {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .frame(width: 20, height: 20)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Close search")
+                                }
+                                .font(.system(size: 12))
+                                .foregroundStyle(FlowVoiceTheme.secondaryText)
+                                .padding(.horizontal, 10)
+                                .frame(width: 220, height: 30)
+                                .background(
+                                    FlowVoiceTheme.inputSurface.opacity(0.72),
+                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                )
+                                .transition(.scale(scale: 0.96, anchor: .leading).combined(with: .opacity))
+
+                            } else {
+
+                                Button {
+                                    withAnimation(.spring(response: 0.24, dampingFraction: 0.88)) {
+                                        liveSearchVisible = true
+                                    }
+                                    DispatchQueue.main.async {
+                                        liveSearchFocused = true
+                                    }
+                                } label: {
+                                    Image(systemName: "magnifyingglass").frame(width: 30, height: 30)
+                                }
+                                .help("Search transcript")
+                                .accessibilityLabel("Search transcript")
                             }
-                            .help("Search transcript")
-                            .accessibilityLabel("Search transcript")
+
                             Spacer()
+
                             Button {
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.setString(controller.noteTranscript, forType: .string)
@@ -2251,11 +2347,6 @@ struct NotetakerView: View {
                                 Image(systemName: "doc.on.doc").frame(width: 30, height: 30)
                             }
                             .help("Copy transcript")
-                            Button { transcriptCollapsed.toggle() } label: {
-                                Image(systemName: transcriptCollapsed ? "plus" : "minus")
-                                    .frame(width: 30, height: 30)
-                            }
-                            .help(transcriptCollapsed ? "Expand transcript" : "Collapse transcript")
                         }
                         .font(.system(size: 13))
                         .foregroundStyle(FlowVoiceTheme.secondaryText)
@@ -2263,55 +2354,77 @@ struct NotetakerView: View {
                         .padding(.top, 14)
                         .padding(.bottom, 8)
 
-                        if liveSearchVisible {
-                            TextField("Search transcript", text: $liveSearch)
-                                .textFieldStyle(.roundedBorder)
-                                .padding(.horizontal, 24)
-                                .padding(.bottom, 12)
-                        }
+                        ScrollView {
+                            VStack(alignment: .trailing, spacing: 6) {
+                                Text("Always get consent when transcribing others.")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(FlowVoiceTheme.secondaryText)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .padding(.bottom, 20)
 
-                        if !transcriptCollapsed {
-                            ScrollView {
-                                VStack(alignment: .trailing, spacing: 6) {
-                                    Text("Always get consent when transcribing others.")
-                                        .font(.system(size: 12))
-                                        .foregroundStyle(FlowVoiceTheme.secondaryText)
-                                        .frame(maxWidth: .infinity, alignment: .center)
-                                        .padding(.bottom, 20)
-
-                                    if controller.noteSpeakerSegments.isEmpty {
-                                        if !controller.noteTranscript.isEmpty && liveMatchesSearch(controller.noteTranscript) {
-                                            liveTranscriptBubble(controller.noteTranscript)
-                                        }
-                                    } else {
-                                        ForEach(controller.noteSpeakerSegments.filter { liveMatchesSearch($0.text) }) { segment in
-                                            VStack(alignment: .trailing, spacing: 4) {
-                                                Text("Speaker \(segment.speaker + 1)")
-                                                    .font(.system(size: 10))
-                                                    .foregroundStyle(FlowVoiceTheme.tertiaryText)
-                                                liveTranscriptBubble(segment.text)
-                                            }
+                                if controller.noteSpeakerSegments.isEmpty {
+                                    if !liveTranscriptText.isEmpty && liveMatchesSearch(liveTranscriptText) {
+                                        liveTranscriptBubble(
+                                            committed: controller.noteTranscript,
+                                            partial: controller.notePartialTranscript
+                                        )
+                                    }
+                                } else {
+                                    ForEach(controller.noteSpeakerSegments.filter { liveMatchesSearch($0.text) }) { segment in
+                                        VStack(alignment: .trailing, spacing: 4) {
+                                            Text(segment.displaySpeakerName)
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(FlowVoiceTheme.tertiaryText)
+                                            liveTranscriptBubble(
+                                                committed: segment.text,
+                                                partial: ""
+                                            )
                                         }
                                     }
                                     if !controller.notePartialTranscript.isEmpty && liveMatchesSearch(controller.notePartialTranscript) {
-                                        liveTranscriptBubble(controller.notePartialTranscript)
-                                            .opacity(0.65)
+                                        liveTranscriptBubble(
+                                            committed: "",
+                                            partial: controller.notePartialTranscript
+                                        )
                                     }
                                 }
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 16)
                             }
-                            .frame(height: transcriptHeight)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 16)
                         }
+                        .frame(height: transcriptHeight)
 
                         Divider()
-                        HStack(spacing: 10) {
-                            Image(systemName: "waveform")
-                                .font(.system(size: 22))
-                                .foregroundStyle(FlowVoiceTheme.secondaryText)
-                            Text(isRecording ? "Recording" : (isFinalizing ? "Finishing..." : "Ready to save"))
-                                .foregroundStyle(FlowVoiceTheme.primaryText)
+                        HStack(spacing: 12) {
+                            RecordingPulseDot(
+                                isActive: isRecording && !isRecordingPaused,
+                                level: controller.audioLevel
+                            )
+                            .frame(
+                                width: 18,
+                                height: 34
+                            )
+                            .contentShape(Rectangle())
+
+                            if isRecordingPaused {
+
+                                RecordingTransportButton(
+                                    isPaused: true,
+                                    action: toggleRecordingPause
+                                )
+                                .transition(.scale(scale: 0.88).combined(with: .opacity))
+                                .disabled(isFinalizing)
+
+                            } else if isRecording {
+
+                                RecordingTransportButton(
+                                    isPaused: false,
+                                    action: toggleRecordingPause
+                                )
+                                .transition(.scale(scale: 0.88).combined(with: .opacity))
+                                .disabled(isFinalizing)
+                            }
                             Spacer()
                             Text(String(format: "%d:%02d", elapsedSeconds / 60, elapsedSeconds % 60))
                                 .monospacedDigit()
@@ -2320,6 +2433,12 @@ struct NotetakerView: View {
                         .foregroundStyle(FlowVoiceTheme.secondaryText)
                         .padding(.horizontal, 24)
                         .padding(.vertical, 14)
+                        .animation(
+                            reduceMotion
+                            ? nil
+                            : .spring(response: 0.22, dampingFraction: 0.82),
+                            value: isRecordingPaused
+                        )
                     }
                     .buttonStyle(NoteActionButtonStyle())
                     .background(colorScheme == .dark ? Color(nsColor: .windowBackgroundColor) : .white,
@@ -2379,28 +2498,175 @@ struct NotetakerView: View {
         liveSearch.isEmpty || text.localizedStandardContains(liveSearch)
     }
 
-    private func liveTranscriptBubble(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 14))
-            .lineSpacing(4)
+    private var liveTranscriptText:
+        String {
+
+        [
+            controller.noteTranscript,
+            controller.notePartialTranscript
+        ]
+        .filter {
+            !$0.isEmpty
+        }
+        .joined(separator: " ")
+    }
+
+    private var liveRecordingStatusText:
+        String {
+
+        if isFinalizing {
+            return "Finishing..."
+        }
+
+        if isRecordingPaused {
+            return "Paused"
+        }
+
+        if isRecording {
+            return "Recording"
+        }
+
+        return "Ready to save"
+    }
+
+    private func toggleRecordingPause() {
+
+        guard
+            isRecording,
+            !isFinalizing
+        else {
+            return
+        }
+
+        if isRecordingPaused {
+
+            isRecordingPaused =
+                false
+
+            startTimer(
+                resetElapsed: false
+            )
+
+            controller
+                .resumeNotetaker()
+
+        } else {
+
+            isRecordingPaused =
+                true
+
+            stopTimer()
+
+            controller
+                .pauseNotetaker()
+        }
+    }
+
+    private func liveTranscriptBubble(
+        committed: String,
+        partial: String
+    ) -> some View {
+
+        let cleanCommitted =
+            committed
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+
+        let cleanPartial =
+            partial
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+
+        var styledText =
+            AttributedString()
+
+        if !cleanCommitted.isEmpty {
+
+            var committedRun =
+                AttributedString(cleanCommitted)
+
+            committedRun.foregroundColor =
+                FlowVoiceTheme.primaryText
+
+            styledText +=
+                committedRun
+        }
+
+        if !cleanPartial.isEmpty {
+
+            if !cleanCommitted.isEmpty {
+
+                styledText +=
+                    AttributedString(" ")
+            }
+
+            var partialRun =
+                AttributedString(cleanPartial)
+
+            partialRun.foregroundColor =
+                FlowVoiceTheme.secondaryText.opacity(0.72)
+
+            styledText +=
+                partialRun
+
+            var dotsRun =
+                AttributedString("  ...")
+
+            dotsRun.foregroundColor =
+                FlowVoiceTheme.primaryText.opacity(0.62)
+
+            styledText +=
+                dotsRun
+        }
+
+        return Text(styledText)
+            .font(
+                .system(
+                    size: 13,
+                    weight: .regular
+                )
+            )
+            .lineSpacing(3)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .foregroundStyle(FlowVoiceTheme.primaryText)
-            .background(FlowVoiceTheme.selectedSurface,
-                        in: RoundedRectangle(cornerRadius: 10))
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.vertical, 8)
+            .background(
+                FlowVoiceTheme.selectedSurface.opacity(
+                    cleanPartial.isEmpty
+                    ? 0.78
+                    : 0.92
+                ),
+                in:
+                    RoundedRectangle(
+                        cornerRadius: 12,
+                        style: .continuous
+                    )
+            )
+            .frame(
+                maxWidth: .infinity,
+                alignment: .trailing
+            )
+            .transaction { transaction in
+                transaction.animation = nil
+            }
     }
 
     // MARK: - Timer
 
-    private func startTimer() {
+    private func startTimer(
+        resetElapsed: Bool = true
+    ) {
 
         timerTask?.cancel()
 
-        elapsedSeconds =
-            0
+        if resetElapsed {
+
+            elapsedSeconds =
+                0
+        }
 
         timerTask =
             Task {
@@ -2518,5 +2784,129 @@ struct NotetakerView: View {
                 )
             }
         }
+    }
+}
+
+private struct RecordingPulseDot:
+    View {
+
+    let isActive:
+        Bool
+
+    let level:
+        Double
+
+    var body: some View {
+
+        Circle()
+            .fill(
+                isActive
+                ? Color.red.opacity(0.86)
+                : FlowVoiceTheme.secondaryText.opacity(0.45)
+            )
+            .frame(
+                width: 8,
+                height: 8
+            )
+            .frame(
+                width: 18,
+                height: 18
+            )
+    }
+}
+
+private struct RecordingTransportButton:
+    View {
+
+    let isPaused:
+        Bool
+
+    let action:
+        () -> Void
+
+    @State private var isHovering =
+        false
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+
+        Button(
+            action:
+                action
+        ) {
+
+            HStack(
+                spacing: 8
+            ) {
+
+                Image(
+                    systemName:
+                        isPaused
+                        ? "play.fill"
+                        : "pause.fill"
+                )
+                .font(
+                    .system(
+                        size: 15,
+                        weight: .semibold
+                    )
+                )
+            }
+            .foregroundStyle(
+                isPaused
+                ? Color(red: 0.33, green: 0.46, blue: 0.03)
+                : FlowVoiceTheme.secondaryText
+            )
+            .padding(
+                .horizontal,
+                0
+            )
+            .frame(
+                width: 40,
+                height: 36
+            )
+            .background(
+                isHovering
+                ? FlowVoiceTheme.hoverSurface
+                : Color.clear,
+                in:
+                    RoundedRectangle(
+                        cornerRadius: 12,
+                        style: .continuous
+                    )
+            )
+            .contentShape(
+                RoundedRectangle(
+                    cornerRadius: 12,
+                    style: .continuous
+                )
+            )
+        }
+        .buttonStyle(.plain)
+        .help(
+            isPaused
+            ? "Resume transcript"
+            : "Pause transcript"
+        )
+        .onHover { hovering in
+
+            withAnimation(
+                reduceMotion
+                ? nil
+                : .easeInOut(duration: 0.12)
+            ) {
+
+                isHovering =
+                    hovering
+            }
+        }
+        .animation(
+            reduceMotion
+            ? nil
+            : .spring(response: 0.22, dampingFraction: 0.84),
+            value:
+                isPaused
+        )
     }
 }

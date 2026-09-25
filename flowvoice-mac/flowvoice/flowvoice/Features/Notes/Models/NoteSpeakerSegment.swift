@@ -13,6 +13,20 @@ struct NoteSpeakerSegment:
     let start: Double?
     let end: Double?
 
+    var displaySpeakerName: String {
+
+        speaker == 0
+            ? "You"
+            : "Them"
+    }
+
+    var displaySpeakerInitial: String {
+
+        speaker == 0
+            ? "Y"
+            : "T"
+    }
+
     init(
         id: UUID = UUID(),
         speaker: Int,
